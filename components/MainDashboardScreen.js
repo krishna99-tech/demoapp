@@ -146,74 +146,100 @@ export default function MainDashboardScreen() {
     );
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Gradient Header */}
-      <LinearGradient colors={["#FF6347", "#FF8264"]} style={styles.header}>
-        <Text style={styles.title}>My Dashboards</Text>
-        <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <Ionicons name="add-circle" size={36} color="#fff" />
-        </TouchableOpacity>
-      </LinearGradient>
+ return (
+  <View style={styles.container}>
+    {/* 🌈 Gradient Header */}
+    <LinearGradient colors={["#FF6347", "#FF8264"]} style={styles.header}>
+      <Text style={styles.title}>My Dashboards</Text>
+      <TouchableOpacity onPress={() => setModalVisible(true)}>
+        <Ionicons name="add-circle" size={36} color="#fff" />
+      </TouchableOpacity>
+    </LinearGradient>
 
-      {/* Dashboard List */}
-      {loading ? (
-        <ActivityIndicator size="large" color="#FF6347" style={{ marginTop: 30 }} />
-      ) : (
-        <FlatList
-          data={dashboards}
-          keyExtractor={(item) => item.id?.toString()}
-          renderItem={({ item }) => <DashboardCard item={item} />}
-          contentContainerStyle={{ padding: 16 }}
-          ListEmptyComponent={
-            <Text style={{ textAlign: "center", marginTop: 40, color: "#999" }}>
-              No dashboards yet. Tap + to add one.
-            </Text>
-          }
-        />
-      )}
+    {/* 🧭 Dashboard List */}
+    {loading ? (
+      <ActivityIndicator
+        size="large"
+        color="#FF6347"
+        style={{ marginTop: 30 }}
+      />
+    ) : (
+      <FlatList
+        data={dashboards}
+        keyExtractor={(item, index) =>
+          item?._id?.toString?.() ||
+          item?.id?.toString?.() ||
+          `dashboard-${index}`
+        }
+        renderItem={({ item, index }) => (
+          <DashboardCard
+            key={item?._id || item?.id || `dashboard-${index}`}
+            item={item}
+          />
+        )}
+        contentContainerStyle={{ padding: 16 }}
+        ListEmptyComponent={
+          <Text
+            style={{
+              textAlign: "center",
+              marginTop: 40,
+              color: "#999",
+              fontSize: 16,
+            }}
+          >
+            No dashboards yet. Tap + to add one.
+          </Text>
+        }
+      />
+    )}
 
-      {/* Modal */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <Animated.View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Create Dashboard</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Dashboard Name"
-              placeholderTextColor="#888"
-              value={newName}
-              onChangeText={setNewName}
-            />
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              placeholder="Description (optional)"
-              placeholderTextColor="#888"
-              value={newDescription}
-              onChangeText={setNewDescription}
-              multiline
-            />
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.cancelBtn}
-                onPress={() => setModalVisible(false)}
+    {/* 🪟 Create Dashboard Modal */}
+    <Modal visible={modalVisible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <Animated.View style={styles.modalView}>
+          <Text style={styles.modalTitle}>Create Dashboard</Text>
+
+          {/* 📝 Inputs */}
+          <TextInput
+            style={styles.input}
+            placeholder="Dashboard Name"
+            placeholderTextColor="#888"
+            value={newName}
+            onChangeText={setNewName}
+          />
+          <TextInput
+            style={[styles.input, { height: 80 }]}
+            placeholder="Description (optional)"
+            placeholderTextColor="#888"
+            value={newDescription}
+            onChangeText={setNewDescription}
+            multiline
+          />
+
+          {/* 🎛️ Buttons */}
+          <View style={styles.modalButtons}>
+            <Pressable
+              style={styles.cancelBtn}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable style={styles.addBtn} onPress={addDashboard}>
+              <LinearGradient
+                colors={["#FF6347", "#FF8264"]}
+                style={styles.addBtnGradient}
               >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable style={styles.addBtn} onPress={addDashboard}>
-                <LinearGradient
-                  colors={["#FF6347", "#FF8264"]}
-                  style={styles.addBtnGradient}
-                >
-                  <Text style={styles.addText}>Add</Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
-    </View>
-  );
+                <Text style={styles.addText}>Add</Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  </View>
+);
+
 }
 
 // 💅 STYLES

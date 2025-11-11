@@ -253,6 +253,7 @@ export default function DashboardScreen({ route, navigation }) {
             deviceToken={item.device_token}
             initialState={item.value || false}
             onStateChange={fetchWidgets}
+              onLongPress={() => handleWidgetLongPress(item._id)}
           />
         );
         break;

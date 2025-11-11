@@ -11,17 +11,16 @@ export default function LEDControlWidget({
   deviceToken,       // <-- You MUST pass a valid token from the parent!
   initialState = false,
   onLongPress,
+  onDelete,          // ✅ New prop for delete
 }) {
   const [ledOn, setLedOn] = useState(initialState ? 1 : 0);
   const [loading, setLoading] = useState(false);
   const pollTimer = useRef(null);
 
-  // Confirm deviceToken presence with log
   useEffect(() => {
     console.log("LED Widget received deviceToken:", deviceToken);
   }, [deviceToken]);
 
-  // Poll server for latest LED state
   useEffect(() => {
     const poll = async () => {
       try {
@@ -32,26 +31,18 @@ export default function LEDControlWidget({
           setLedOn(res.data.data.led ? 1 : 0);
         }
       } catch (err) {
-        // Optionally handle error
         console.error("Polling error:", err.response?.data || err.message);
       }
       pollTimer.current = setTimeout(poll, POLL_INTERVAL);
     };
-    // Only poll if deviceToken is valid!
     if (deviceToken) poll();
     return () => clearTimeout(pollTimer.current);
   }, [deviceToken]);
 
-  // Toggle state and push to backend
   const toggleLED = async () => {
     setLoading(true);
     try {
       const newState = ledOn ? 0 : 1;
-      // Log to verify token before sending POST
-      console.log("LED Widget POST payload:", {
-        device_token: deviceToken,
-        data: { led: newState },
-      });
       if (!deviceToken) throw new Error("deviceToken not provided to LED widget!");
       const res = await axios.post(`${API_BASE}/telemetry`, {
         device_token: deviceToken,
@@ -67,25 +58,27 @@ export default function LEDControlWidget({
 
   return (
     <TouchableOpacity
-      style={[
-        styles.card,
-        { backgroundColor: ledOn ? "#4cd964" : "#fff" },
-      ]}
+      style={[styles.card, { backgroundColor: ledOn ? "#4cd964" : "#fff" }]}
       activeOpacity={0.8}
       onPress={toggleLED}
       onLongPress={onLongPress}
       delayLongPress={600}
       disabled={loading}
     >
+      {/* Delete button */}
+      {onDelete && (
+        <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
+          <Ionicons name="trash-outline" size={20} color="#ff3b30" />
+        </TouchableOpacity>
+      )}
+
       <Ionicons
         name={ledOn ? "bulb" : "bulb-outline"}
         size={30}
         color={ledOn ? "#fff" : "#007AFF"}
         style={styles.icon}
       />
-      <Text style={[styles.title, { color: ledOn ? "#fff" : "#333" }]}>
-        {title}
-      </Text>
+      <Text style={[styles.title, { color: ledOn ? "#fff" : "#333" }]}>{title}</Text>
       <Text style={[styles.status, { color: ledOn ? "#fff" : "#007AFF" }]}>
         {loading ? "..." : ledOn ? "ON" : "OFF"}
       </Text>
@@ -106,6 +99,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
     margin: 8,
+  },
+  deleteBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    zIndex: 10,
+    padding: 4,
+    backgroundColor: "#ffffffaa",
+    borderRadius: 12,
   },
   icon: { marginBottom: 8 },
   title: { fontSize: 14, fontWeight: "600" },

@@ -329,9 +329,31 @@ const styles = StyleSheet.create({
   modalView: { width: "85%", backgroundColor: "#fff", borderRadius: 16, padding: 20, elevation: 6 },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 10 },
   modalSub: { color: "#333", marginBottom: 12, textAlign: "center" },
-  widgetOptions: { flexDirection: "row", justifyContent: "space-around", marginBottom: 10 },
-  widgetOption: { alignItems: "center", backgroundColor: "#e0e0e0", padding: 12, borderRadius: 10, width: 90 },
-  widgetText: { color: "#007AFF", fontWeight: "bold", marginTop: 4 },
+  // ✅ FIXED: Widget option layout
+  widgetOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",        // allows wrapping to next row
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 10,
+  },
+
+  widgetOption: {
+    width: "40%",            // two items per row
+    margin: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#e0e0e0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  widgetText: { 
+    color: "#007AFF", 
+    fontWeight: "bold", 
+    marginTop: 4 
+  },
+
   dashboardItem: { backgroundColor: "#f0f0f0", padding: 12, borderRadius: 10, marginBottom: 8 },
   dashboardName: { fontWeight: "bold", fontSize: 16 },
   dashboardDesc: { color: "#555", fontSize: 14 },

@@ -174,11 +174,6 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const updateDeviceStatus = (deviceId, newStatus) => {
-    setDevices((prev) =>
-      prev.map((d) => (d.id === deviceId ? { ...d, status: newStatus } : d))
-    );
-  };
 
   // ====================================
   // 🌐 TELEMETRY
@@ -196,104 +191,136 @@ export const AuthProvider = ({ children }) => {
   // ====================================
   // ⚡ WEBSOCKET
   // ====================================
-  const connectWebSocket = (token) => {
-    if (!token) return;
+  // ====================================
+// ⚡ WEBSOCKET CONNECTION
+// ====================================
+const connectWebSocket = (token) => {
+  if (!token) return;
 
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log("WebSocket already connected");
-      return;
-    }
+  // Avoid duplicate connections
+  if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    console.log("WebSocket already connected");
+    return;
+  }
 
-    const ws = new WebSocket(`${WS_URL}?token=${token}`);
-    wsRef.current = ws;
+  const ws = new WebSocket(`${WS_URL}?token=${token}`);
+  wsRef.current = ws;
 
-    let pingInterval;
+  let pingInterval;
 
-    ws.onopen = () => {
-      console.log("✅ WebSocket connected");
-      pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ type: "ping" }));
-      }, 30000);
-    };
-
-    ws.onmessage = async (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        console.log("📩 WS:", msg);
-
-        switch (msg.type) {
-          case "status_update":
-            updateDeviceStatus(msg.device_id, msg.status);
-            break;
-
-          case "telemetry_update":
-            setDevices((prev) =>
-              prev.map((d) =>
-                d.id === msg.device_id
-                  ? { ...d, telemetry: msg.data, lastTelemetry: msg.timestamp }
-                  : d
-              )
-            );
-
-            // ✅ Also update widgets that use this device
-            setWidgets((prev) =>
-              prev.map((w) =>
-                w.device_id === msg.device_id
-                  ? { ...w, latest_telemetry: msg.data }
-                  : w
-              )
-            );
-
-            break;
-
-          case "widget_update":
-            setWidgets((prev) => {
-              const exists = prev.some((w) => w._id === msg.widget._id);
-              return exists
-                ? prev.map((w) =>
-                    w._id === msg.widget._id ? { ...w, ...msg.widget } : w
-                  )
-                : [...prev, msg.widget];
-            });
-            break;
-
-          case "device_added":
-            setDevices((prev) =>
-              prev.find((d) => d.id === msg.data.id)
-                ? prev
-                : [...prev, msg.data]
-            );
-            break;
-
-          case "device_removed":
-            setDevices((prev) => prev.filter((d) => d.id !== msg.data.id));
-            break;
-
-          case "pong":
-            break;
-
-          default:
-            console.warn("Unknown WS message:", msg.type);
-        }
-
-        setLastUpdated(new Date());
-      } catch (err) {
-        console.error("WebSocket parse error:", err);
-      }
-    };
-
-    ws.onclose = () => {
-      console.warn("⚠️ WS closed, reconnecting...");
-      clearInterval(pingInterval);
-      setTimeout(() => connectWebSocket(token), 5000);
-    };
-
-    ws.onerror = (err) => {
-      console.error("WS error:", err.message);
-      ws.close();
-    };
+  // ✅ Local helper function — must come BEFORE usage
+  const updateDeviceStatus = (deviceId, newStatus) => {
+    setDevices((prev) =>
+      prev.map((d) =>
+        d.id === deviceId ? { ...d, status: newStatus } : d
+      )
+    );
   };
+
+  // ✅ Connection opened
+  ws.onopen = () => {
+    console.log("✅ WebSocket connected");
+
+    // Send periodic pings to keep connection alive
+    pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "ping" }));
+      }
+    }, 30000);
+  };
+
+  // ✅ Handle incoming messages
+  ws.onmessage = async (event) => {
+    try {
+      if (!event.data) return; // Skip empty messages
+
+      const msg = JSON.parse(event.data);
+      if (!msg || typeof msg !== "object") return;
+
+      console.log("📩 WS message:", msg);
+
+      switch (msg.type) {
+        case "status_update":
+          updateDeviceStatus(msg.device_id, msg.status);
+          break;
+
+        case "telemetry_update":
+          setDevices((prev) =>
+            prev.map((d) =>
+              d.id === msg.device_id
+                ? { ...d, telemetry: msg.data, lastTelemetry: msg.timestamp }
+                : d
+            )
+          );
+
+          // ✅ Update widgets linked to this device
+          setWidgets((prev) =>
+            prev.map((w) =>
+              w.device_id === msg.device_id
+                ? { ...w, latest_telemetry: msg.data }
+                : w
+            )
+          );
+          break;
+
+        case "widget_update":
+          setWidgets((prev) => {
+            const exists = prev.some((w) => w._id === msg.widget._id);
+            return exists
+              ? prev.map((w) =>
+                  w._id === msg.widget._id ? { ...w, ...msg.widget } : w
+                )
+              : [...prev, msg.widget];
+          });
+          break;
+
+        case "device_added":
+          setDevices((prev) =>
+            prev.some((d) => d.id === msg.data.id)
+              ? prev
+              : [...prev, msg.data]
+          );
+          break;
+
+        case "device_removed":
+          setDevices((prev) => prev.filter((d) => d.id !== msg.data.id));
+          break;
+
+        case "pong":
+          // Ignore ping-pong keepalives
+          break;
+
+        default:
+          console.warn("⚠️ Unknown WS message type:", msg.type);
+      }
+
+      // ✅ Timestamp refresh for UI
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("❌ WebSocket parse error in DeviceDetailScreen:", err);
+      console.log("Raw event data:", event.data);
+    }
+  };
+
+  // ✅ Handle close (auto reconnect)
+  ws.onclose = (e) => {
+    console.warn("⚠️ WS closed:", e.code, e.reason);
+    clearInterval(pingInterval);
+
+    // Attempt reconnection
+    setTimeout(() => {
+      console.log("🔄 Reconnecting WebSocket...");
+      connectWebSocket(token);
+    }, 5000);
+  };
+
+  // ✅ Handle errors
+  ws.onerror = (err) => {
+    console.error("❌ WS error:", err.message || err);
+    clearInterval(pingInterval);
+    ws.close();
+  };
+};
 
   // ====================================
   // 🌍 CONTEXT PROVIDER VALUE
@@ -309,7 +336,6 @@ export const AuthProvider = ({ children }) => {
         addDevice,
         deleteDevice,
         fetchDevices,
-        updateDeviceStatus,
         fetchTelemetry,
         connectWebSocket,
         login,

@@ -9,21 +9,20 @@ import {
   TouchableOpacity,
   Animated,
   ScrollView,
+  Linking,
   LogBox,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native"; // <-- Added
+import { useNavigation } from "@react-navigation/native";
 import { AuthContext } from "../context/AuthContext";
 
 LogBox.ignoreLogs(["setLayoutAnimationEnabledExperimental"]);
 
 export default function SettingsScreen() {
   const { logout, username, isDarkTheme, toggleTheme } = useContext(AuthContext);
-  const [language, setLanguage] = useState("en");
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const navigation = useNavigation(); // <-- Added
+  const navigation = useNavigation();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -37,14 +36,12 @@ export default function SettingsScreen() {
   const cardColor = isDarkTheme ? "#1e1e1e" : "#fafafa";
   const borderColor = isDarkTheme ? "#333" : "#ddd";
 
-  // 🔘 Theme Toggle
   const handleThemeChange = () => {
     Vibration.vibrate(40);
     toggleTheme();
     Alert.alert("Theme Changed", `Switched to ${!isDarkTheme ? "Dark" : "Light"} Mode.`);
   };
 
-  // 🔘 Logout confirmation
   const handleLogout = () => {
     Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -60,7 +57,15 @@ export default function SettingsScreen() {
     ]);
   };
 
-  // 🔘 Common alert placeholder
+  // Open external links safely
+  const openLink = async (url) => {
+    Vibration.vibrate(20);
+    const supported = await Linking.canOpenURL(url);
+    if (supported) await Linking.openURL(url);
+    else Alert.alert("Error", "Cannot open the link right now.");
+  };
+
+  // Placeholder alert for not-yet features
   const handleCardPress = (title) => {
     Vibration.vibrate(20);
     Alert.alert(title, "Feature coming soon 🚀");
@@ -78,11 +83,15 @@ export default function SettingsScreen() {
       <Animated.ScrollView
         style={{ opacity: fadeAnim }}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
         <Text style={[styles.title, { color: textColor }]}>Settings ⚙️</Text>
 
         {/* 👤 Profile */}
-        <TouchableOpacity activeOpacity={0.85} onPress={() => handleCardPress("Profile")}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => handleCardPress("Profile")}
+        >
           <View style={[styles.card, { backgroundColor: cardColor, borderColor }]}>
             <Ionicons name="person-circle-outline" size={38} color="#4fc3f7" />
             <View style={styles.cardText}>
@@ -110,27 +119,11 @@ export default function SettingsScreen() {
           <Switch value={isDarkTheme} onValueChange={handleThemeChange} />
         </View>
 
-        {/* 🌐 Language Selector */}
-        <View style={[styles.card, { backgroundColor: cardColor, borderColor }]}>
-          <Ionicons name="language-outline" size={34} color="#81d4fa" />
-          <View style={styles.cardText}>
-            <Text style={[styles.cardTitle, { color: textColor }]}>Language</Text>
-            <Picker
-              selectedValue={language}
-              style={[styles.picker, { color: textColor }]}
-              dropdownIconColor={isDarkTheme ? "#fff" : "#000"}
-              onValueChange={(val) => setLanguage(val)}
-            >
-              <Picker.Item label="English" value="en" />
-              <Picker.Item label="हिन्दी (Hindi)" value="hi" />
-              <Picker.Item label="தமிழ் (Tamil)" value="ta" />
-              <Picker.Item label="తెలుగు (Telugu)" value="te" />
-            </Picker>
-          </View>
-        </View>
-
         {/* 🔔 Notifications */}
-        <TouchableOpacity activeOpacity={0.85} onPress={() => handleCardPress("Notifications")}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => handleCardPress("Notifications")}
+        >
           <View style={[styles.card, { backgroundColor: cardColor, borderColor }]}>
             <Ionicons name="notifications-outline" size={34} color="#ffb74d" />
             <View style={styles.cardText}>
@@ -143,11 +136,16 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         {/* 🆘 Help & Support */}
-        <TouchableOpacity activeOpacity={0.85} onPress={() => handleCardPress("Help & Support")}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => openLink("https://thingsnxt.vercel.app/support")}
+        >
           <View style={[styles.card, { backgroundColor: cardColor, borderColor }]}>
             <Ionicons name="help-circle-outline" size={34} color="#64b5f6" />
             <View style={styles.cardText}>
-              <Text style={[styles.cardTitle, { color: textColor }]}>Help & Support</Text>
+              <Text style={[styles.cardTitle, { color: textColor }]}>
+                Help & Support
+              </Text>
               <Text style={[styles.cardSubtitle, { color: "#999" }]}>
                 Get assistance or report a problem
               </Text>
@@ -156,7 +154,10 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         {/* 💬 Feedback */}
-        <TouchableOpacity activeOpacity={0.85} onPress={() => handleCardPress("Feedback")}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => openLink("https://thingsnxt.vercel.app/")}
+        >
           <View style={[styles.card, { backgroundColor: cardColor, borderColor }]}>
             <Ionicons name="chatbox-ellipses-outline" size={34} color="#81c784" />
             <View style={styles.cardText}>
@@ -169,7 +170,11 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         {/* 🚪 Logout */}
-        <TouchableOpacity activeOpacity={0.85} onPress={handleLogout} style={styles.logoutButton}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={handleLogout}
+          style={styles.logoutButton}
+        >
           <LinearGradient colors={["#ff5252", "#d32f2f"]} style={styles.logoutGradient}>
             <Ionicons name="log-out-outline" size={28} color="#fff" />
             <Text style={styles.logoutText}>Logout</Text>
@@ -190,6 +195,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 20,
     alignItems: "center",
+    paddingBottom: 100, // ensure scroll room for all screen sizes
   },
   title: {
     fontSize: 28,
@@ -213,7 +219,6 @@ const styles = StyleSheet.create({
   cardText: { flex: 1, marginLeft: 15 },
   cardTitle: { fontSize: 18, fontWeight: "600" },
   cardSubtitle: { fontSize: 14, marginTop: 3 },
-  picker: { width: 170, height: 40 },
   logoutButton: { width: "90%", marginTop: 25 },
   logoutGradient: {
     flexDirection: "row",

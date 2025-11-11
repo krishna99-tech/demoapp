@@ -7,11 +7,18 @@ import {
   ScrollView,
   Animated,
   TouchableOpacity,
+  Dimensions,
+  SafeAreaView,
+  Platform,
 } from "react-native";
 import MaskedView from "@react-native-masked-view/masked-view";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { AuthContext } from "../context/AuthContext";
+
+// 📱 Responsive scaling based on device width
+const { width, height } = Dimensions.get("window");
+const scale = width / 375; // base width = iPhone X (375)
 
 export default function HomeScreen() {
   const { username, devices = [], isDarkTheme, lastUpdated } = useContext(AuthContext);
@@ -24,7 +31,7 @@ export default function HomeScreen() {
 
   const theme = isDarkTheme ? "dark" : "light";
 
-  // ⏱️ Header animation + clock updater
+  // 🎬 Header animation + clock update
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -34,7 +41,7 @@ export default function HomeScreen() {
       }),
       Animated.spring(slideAnim, {
         toValue: 0,
-        friction: 5,
+        friction: 6,
         useNativeDriver: true,
       }),
     ]).start();
@@ -58,7 +65,7 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // 🔄 Animate when devices update
+  // 💫 Animate when devices update
   useEffect(() => {
     updateAnim.setValue(0);
     Animated.timing(updateAnim, {
@@ -68,7 +75,7 @@ export default function HomeScreen() {
     }).start();
   }, [devices]);
 
-  // 📊 Derived stats
+  // 📊 Stats
   const onlineDevices = devices.filter((d) => d?.status === "online").length;
   const offlineDevices = devices.length - onlineDevices;
 
@@ -125,161 +132,180 @@ export default function HomeScreen() {
   });
 
   return (
-    <LinearGradient
-      colors={
-        theme === "dark"
-          ? ["#0f2027", "#203a43", "#2c5364"]
-          : ["#e6f3ff", "#ffffff"]
-      }
-      style={styles.gradient}
-    >
-      <ScrollView
-        contentContainerStyle={[styles.container, { backgroundColor: "transparent" }]}
-        showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.safeArea}>
+      <LinearGradient
+        colors={
+          theme === "dark"
+            ? ["#0f2027", "#203a43", "#2c5364"]
+            : ["#e6f3ff", "#ffffff"]
+        }
+        style={styles.gradient}
       >
-        <Animated.View
-          style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
+        <ScrollView
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
         >
-          {/* 🌈 Animated header */}
-          <MaskedView
-            maskElement={
-              <Text style={styles.welcome}>
-                Welcome, {username || "User"} 👋
-              </Text>
-            }
-          >
-            <Animated.View style={{ transform: [{ translateX }] }}>
-              <LinearGradient
-                colors={["#00c6ff", "#0072ff", "#00c6ff"]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={{ height: 50 }}
-              />
-            </Animated.View>
-          </MaskedView>
-
-          <Text
-            style={[
-              styles.subtitle,
-              { color: theme === "dark" ? "#d6eaff" : "#444" },
-            ]}
-          >
-            Your ThingsNXT Dashboard
-          </Text>
-
-          <Text
-            style={[
-              styles.time,
-              { color: theme === "dark" ? "#cce7ff" : "#666" },
-            ]}
-          >
-            🕒 {currentTime.toLocaleTimeString()}
-          </Text>
-
-          {/* 💡 Live status line */}
           <Animated.View
-            style={{
-              alignItems: "center",
-              opacity: liveOpacity,
-              marginBottom: 12,
-            }}
+            style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
           >
-            <View style={styles.liveRow}>
-              <View style={styles.liveDot} />
-              <Text
-                style={[
-                  styles.liveText,
-                  { color: theme === "dark" ? "#9fe6a0" : "#008000" },
-                ]}
-              >
-                Live updates active
-              </Text>
-            </View>
+            {/* 🌈 Animated Header */}
+            <MaskedView
+              maskElement={
+                <Text style={[styles.welcome, { fontSize: 26 * scale }]}>
+                  Welcome, {username || "User"} 👋
+                </Text>
+              }
+            >
+              <Animated.View style={{ transform: [{ translateX }] }}>
+                <LinearGradient
+                  colors={["#00c6ff", "#0072ff", "#00c6ff"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ height: 50 }}
+                />
+              </Animated.View>
+            </MaskedView>
+
             <Text
+              style={[
+                styles.subtitle,
+                { color: theme === "dark" ? "#d6eaff" : "#444" },
+              ]}
+            >
+              Your ThingsNXT Dashboard
+            </Text>
+
+            <Text
+              style={[
+                styles.time,
+                { color: theme === "dark" ? "#cce7ff" : "#666" },
+              ]}
+            >
+              🕒 {currentTime.toLocaleTimeString()}
+            </Text>
+
+            {/* 🔴 Live update line */}
+            <Animated.View
               style={{
-                fontSize: 13,
-                color: theme === "dark" ? "#aaa" : "#555",
-                marginTop: 2,
+                alignItems: "center",
+                opacity: liveOpacity,
+                marginBottom: 12,
               }}
             >
-              Last updated:{" "}
-              {lastUpdated
-                ? new Date(lastUpdated).toLocaleTimeString()
-                : "Waiting..."}
-            </Text>
-          </Animated.View>
-
-          {/* 📈 Device stats */}
-          <Animated.View style={{ opacity: liveOpacity }}>
-            <View style={styles.statsContainer}>
-              {statCards.map((stat, index) => (
-                <LinearGradient
-                  key={index}
-                  colors={stat.colors}
-                  style={styles.statCard}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+              <View style={styles.liveRow}>
+                <View style={styles.liveDot} />
+                <Text
+                  style={[
+                    styles.liveText,
+                    { color: theme === "dark" ? "#9fe6a0" : "#008000" },
+                  ]}
                 >
-                  <Ionicons name={stat.icon} size={32} color="#fff" />
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                  <Text style={styles.statTitle}>{stat.title}</Text>
-                </LinearGradient>
+                  Live updates active
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontSize: 13 * scale,
+                  color: theme === "dark" ? "#aaa" : "#555",
+                  marginTop: 2,
+                }}
+              >
+                Last updated:{" "}
+                {lastUpdated
+                  ? new Date(lastUpdated).toLocaleTimeString()
+                  : "Waiting..."}
+              </Text>
+            </Animated.View>
+
+            {/* 📊 Device Stats */}
+            <Animated.View style={{ opacity: liveOpacity }}>
+              <View style={styles.statsContainer}>
+                {statCards.map((stat, index) => (
+                  <LinearGradient
+                    key={index}
+                    colors={stat.colors}
+                    style={[styles.statCard, { width: width * 0.44 }]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Ionicons name={stat.icon} size={32 * scale} color="#fff" />
+                    <Text style={[styles.statValue, { fontSize: 26 * scale }]}>
+                      {stat.value}
+                    </Text>
+                    <Text style={[styles.statTitle, { fontSize: 14 * scale }]}>
+                      {stat.title}
+                    </Text>
+                  </LinearGradient>
+                ))}
+              </View>
+            </Animated.View>
+
+            {/* Divider */}
+            <View
+              style={{
+                height: 1,
+                backgroundColor: theme === "dark" ? "#333" : "#ccc",
+                marginVertical: 25,
+                width: "80%",
+                alignSelf: "center",
+              }}
+            />
+
+            {/* ⚙️ Quick Actions */}
+            <Text
+              style={[
+                styles.sectionTitle,
+                { color: theme === "dark" ? "#eee" : "#222" },
+              ]}
+            >
+              Quick Actions ⚙️
+            </Text>
+
+            <View style={styles.actionContainer}>
+              {actions.map((action, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={[styles.actionCardWrapper, { width: width * 0.42 }]}
+                  activeOpacity={0.85}
+                  onPress={action.onPress}
+                >
+                  <LinearGradient
+                    colors={action.colors}
+                    style={styles.actionCard}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <Ionicons name={action.icon} size={28 * scale} color="#fff" />
+                    <Text style={[styles.actionText, { fontSize: 15 * scale }]}>
+                      {action.title}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               ))}
             </View>
           </Animated.View>
-
-          {/* Divider */}
-          <View
-            style={{
-              height: 1,
-              backgroundColor: theme === "dark" ? "#333" : "#ccc",
-              marginVertical: 25,
-              width: "80%",
-              alignSelf: "center",
-            }}
-          />
-
-          {/* ⚙️ Quick actions */}
-          <Text
-            style={[
-              styles.sectionTitle,
-              { color: theme === "dark" ? "#eee" : "#222" },
-            ]}
-          >
-            Quick Actions ⚙️
-          </Text>
-
-          <View style={styles.actionContainer}>
-            {actions.map((action, idx) => (
-              <TouchableOpacity
-                key={idx}
-                style={styles.actionCardWrapper}
-                activeOpacity={0.85}
-                onPress={action.onPress}
-              >
-                <LinearGradient
-                  colors={action.colors}
-                  style={styles.actionCard}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <Ionicons name={action.icon} size={28} color="#fff" />
-                  <Text style={styles.actionText}>{action.title}</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Animated.View>
-      </ScrollView>
-    </LinearGradient>
+        </ScrollView>
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  gradient: { flex: 1 },
-  container: { flexGrow: 1, padding: 20, paddingTop: 80 },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  gradient: {
+    flex: 1,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    padding: 20,
+    paddingTop: Platform.OS === "ios" ? 60 : 80,
+    paddingBottom: 100,
+  },
   welcome: {
-    fontSize: 26,
     fontWeight: "900",
     textAlign: "center",
     letterSpacing: 0.5,
@@ -306,9 +332,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: "#00FF66",
-    shadowColor: "#00FF66",
-    shadowOpacity: 0.7,
-    shadowRadius: 6,
   },
   liveText: {
     fontWeight: "bold",
@@ -320,7 +343,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   statCard: {
-    width: "47%",
     borderRadius: 16,
     padding: 18,
     marginBottom: 20,
@@ -334,13 +356,11 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: "#fff",
-    fontSize: 28,
     fontWeight: "bold",
     marginTop: 10,
   },
   statTitle: {
     color: "#fff",
-    fontSize: 14,
     opacity: 0.9,
   },
   sectionTitle: {
@@ -355,7 +375,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
   },
   actionCardWrapper: {
-    width: "45%",
     marginBottom: 20,
   },
   actionCard: {
@@ -366,7 +385,6 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: "#fff",
-    fontSize: 15,
     fontWeight: "bold",
     marginTop: 8,
   },
