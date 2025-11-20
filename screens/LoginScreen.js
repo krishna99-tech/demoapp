@@ -57,7 +57,7 @@ export default function LoginScreen() {
               {/* Header */}
               <View style={styles.header}>
                 <Text style={styles.title}>Welcome Back 👋</Text>
-                <Text style={styles.subtitle}>Login to your IoT dashboard</Text>
+                <Text style={styles.subtitle}>Login to your ThingsNXT dashboard</Text>
               </View>
 
               {/* Email / Username */}

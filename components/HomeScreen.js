@@ -1,11 +1,10 @@
 // screens/HomeScreen.js
-import React, { useContext, useEffect, useState, useRef } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Animated,
   TouchableOpacity,
   Dimensions,
   SafeAreaView,
@@ -24,56 +23,14 @@ export default function HomeScreen() {
   const { username, devices = [], isDarkTheme, lastUpdated } = useContext(AuthContext);
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
-  const updateAnim = useRef(new Animated.Value(0)).current;
 
   const theme = isDarkTheme ? "dark" : "light";
 
-  // 🎬 Header animation + clock update
+  // ⏱️ Clock update
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 2500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 2500,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // 💫 Animate when devices update
-  useEffect(() => {
-    updateAnim.setValue(0);
-    Animated.timing(updateAnim, {
-      toValue: 1,
-      duration: 700,
-      useNativeDriver: true,
-    }).start();
-  }, [devices]);
 
   // 📊 Stats
   const onlineDevices = devices.filter((d) => d?.status === "online").length;
@@ -121,16 +78,6 @@ export default function HomeScreen() {
     },
   ];
 
-  const translateX = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-200, 200],
-  });
-
-  const liveOpacity = updateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 1],
-  });
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient
@@ -146,31 +93,27 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           bounces={true}
         >
-          <Animated.View
-            style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
-          >
-            {/* 🌈 Animated Header */}
+          <View>
+            {/* 🌈 Header */}
             <MaskedView
               maskElement={
-                <Text style={[styles.welcome, { fontSize: 26 * scale }]}>
+                <Text style={[styles.welcome, { fontSize: 20 * scale, fontFamily: "System" }]}>
                   Welcome, {username || "User"} 👋
                 </Text>
               }
             >
-              <Animated.View style={{ transform: [{ translateX }] }}>
-                <LinearGradient
-                  colors={["#00c6ff", "#0072ff", "#00c6ff"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={{ height: 50 }}
-                />
-              </Animated.View>
+              <LinearGradient
+                colors={["#00c6ff", "#0072ff", "#00c6ff"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={{ height: 50 }}
+              />
             </MaskedView>
 
             <Text
               style={[
                 styles.subtitle,
-                { color: theme === "dark" ? "#d6eaff" : "#444" },
+                { color: theme === "dark" ? "#d6eaff" : "#444", fontFamily: "System" },
               ]}
             >
               Your ThingsNXT Dashboard
@@ -179,17 +122,16 @@ export default function HomeScreen() {
             <Text
               style={[
                 styles.time,
-                { color: theme === "dark" ? "#cce7ff" : "#666" },
+                { color: theme === "dark" ? "#cce7ff" : "#666", fontFamily: "monospace" },
               ]}
             >
               🕒 {currentTime.toLocaleTimeString()}
             </Text>
 
             {/* 🔴 Live update line */}
-            <Animated.View
+            <View
               style={{
                 alignItems: "center",
-                opacity: liveOpacity,
                 marginBottom: 12,
               }}
             >
@@ -198,7 +140,7 @@ export default function HomeScreen() {
                 <Text
                   style={[
                     styles.liveText,
-                    { color: theme === "dark" ? "#9fe6a0" : "#008000" },
+                    { color: theme === "dark" ? "#9fe6a0" : "#008000", fontFamily: "System" },
                   ]}
                 >
                   Live updates active
@@ -209,6 +151,7 @@ export default function HomeScreen() {
                   fontSize: 13 * scale,
                   color: theme === "dark" ? "#aaa" : "#555",
                   marginTop: 2,
+                  fontFamily: "System",
                 }}
               >
                 Last updated:{" "}
@@ -216,30 +159,28 @@ export default function HomeScreen() {
                   ? new Date(lastUpdated).toLocaleTimeString()
                   : "Waiting..."}
               </Text>
-            </Animated.View>
+            </View>
 
             {/* 📊 Device Stats */}
-            <Animated.View style={{ opacity: liveOpacity }}>
-              <View style={styles.statsContainer}>
-                {statCards.map((stat, index) => (
-                  <LinearGradient
-                    key={index}
-                    colors={stat.colors}
-                    style={[styles.statCard, { width: width * 0.44 }]}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Ionicons name={stat.icon} size={32 * scale} color="#fff" />
-                    <Text style={[styles.statValue, { fontSize: 26 * scale }]}>
-                      {stat.value}
-                    </Text>
-                    <Text style={[styles.statTitle, { fontSize: 14 * scale }]}>
-                      {stat.title}
-                    </Text>
-                  </LinearGradient>
-                ))}
-              </View>
-            </Animated.View>
+            <View style={styles.statsContainer}>
+              {statCards.map((stat, index) => (
+                <LinearGradient
+                  key={index}
+                  colors={stat.colors}
+                  style={[styles.statCard, { width: width * 0.44 }]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Ionicons name={stat.icon} size={32 * scale} color="#fff" />
+                  <Text style={[styles.statValue, { fontSize: 26 * scale, fontFamily: "System" }]}>
+                    {stat.value}
+                  </Text>
+                  <Text style={[styles.statTitle, { fontSize: 14 * scale, fontFamily: "System" }]}>
+                    {stat.title}
+                  </Text>
+                </LinearGradient>
+              ))}
+            </View>
 
             {/* Divider */}
             <View
@@ -256,7 +197,7 @@ export default function HomeScreen() {
             <Text
               style={[
                 styles.sectionTitle,
-                { color: theme === "dark" ? "#eee" : "#222" },
+                { color: theme === "dark" ? "#eee" : "#222", fontFamily: "System" },
               ]}
             >
               Quick Actions ⚙️
@@ -277,14 +218,14 @@ export default function HomeScreen() {
                     end={{ x: 1, y: 1 }}
                   >
                     <Ionicons name={action.icon} size={28 * scale} color="#fff" />
-                    <Text style={[styles.actionText, { fontSize: 15 * scale }]}>
+                    <Text style={[styles.actionText, { fontSize: 15 * scale, fontFamily: "System" }]}>
                       {action.title}
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
               ))}
             </View>
-          </Animated.View>
+          </View>
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>

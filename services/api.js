@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL } from "../screens/config";
 
+const SHOULD_LOG = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_API_LOGS === "true";
+const debugLog = (...args) => {
+  if (SHOULD_LOG) {
+    console.log(...args);
+  }
+};
+
 class API {
   constructor() {
     this.baseUrl = BASE_URL;
@@ -20,7 +27,7 @@ class API {
     }
 
     try {
-      console.log(
+      debugLog(
         "📡 API Request:",
         url,
         options.method || "GET",
@@ -72,7 +79,7 @@ class API {
         throw new Error(message);
       }
 
-      console.log("✅ API Success:", data);
+      debugLog("✅ API Success:", data);
       return data;
     } catch (err) {
       console.error("⚠️ Network/API error:", err.message);
@@ -91,7 +98,7 @@ class API {
         body: JSON.stringify(userData),
       });
       if (res?.access_token) {
-        console.log("🔚 Signup API success: Tokens received for auto-login");
+        debugLog("🔚 Signup API success: Tokens received for auto-login");
         return res;
       }
       if (res?.message || typeof res === "string") {
@@ -112,7 +119,7 @@ class API {
     const body = new URLSearchParams();
     body.append("username", identifier.trim());
     body.append("password", password);
-    console.log("📡 Login form body:", body.toString());
+    debugLog("📡 Login form body:", body.toString());
 
     const data = await this.request("/token", {
       method: "POST",
@@ -121,7 +128,7 @@ class API {
     });
 
     if (data?.access_token) {
-      console.log("🔐 Login API success: Tokens received");
+      debugLog("🔐 Login API success: Tokens received");
     }
     return data;
   }
@@ -135,7 +142,7 @@ class API {
       body: JSON.stringify({ refresh_token: refresh }),
     });
     if (data?.access_token) {
-      console.log("♻️ Token refreshed");
+      debugLog("♻️ Token refreshed");
     }
     return data;
   }
@@ -144,7 +151,7 @@ class API {
   async logout() {
     await this.request("/logout", { method: "POST" });
     await AsyncStorage.multiRemove(["userToken", "refreshToken", "username"]);
-    console.log("👋 Logged out");
+    debugLog("👋 Logged out");
   }
 
   // PROFILE

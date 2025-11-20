@@ -138,7 +138,7 @@ export default function SignupScreen({ navigation }) {
           >
             <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
               <Text style={styles.title}>Create Account</Text>
-              <Text style={styles.subtitle}>Sign up to get started</Text>
+              <Text style={styles.subtitle}>Sign up to get started with ThingsNXT</Text>
 
               {/* ... all your fields ... */}
 
