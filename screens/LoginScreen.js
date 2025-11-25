@@ -37,6 +37,10 @@ export default function LoginScreen() {
       // navigation logic is handled inside AuthContext (no need to manually navigate here)
       // If you want to navigate here instead, call:
       // navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });
+      const success = await login(identifier.trim(), password);
+      if (success) {
+        // Navigation is handled by the RootNavigator automatically when userToken changes.
+      }
     } finally {
       setLoading(false);
     }
