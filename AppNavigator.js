@@ -1,0 +1,217 @@
+import React from "react";
+import {
+  View,
+  ActivityIndicator,
+  Platform,
+  Dimensions,
+  StyleSheet,
+} from "react-native";
+import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { COLORS } from "./theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAuth } from "./context/AuthContext";
+import "./debug-text-patch"; // Ensure debug patch is applied
+
+// Screens
+import LoginScreen from "./screens/LoginScreen";
+import SignupScreen from "./screens/SignupScreen";
+import ForgotPasswordScreen from "./screens/ForgotPasswordScreen";
+import ResetPasswordScreen from "./screens/ResetPasswordScreen";
+import MainDashboardScreen from "./screens/MainDashboardScreen";
+import DevicesScreen from "./screens/DevicesScreen";
+import DeviceDetailScreen from "./screens/DeviceDetailScreen";
+import NotificationsScreen from "./screens/NotificationsScreen";
+import SettingsScreen from "./screens/SettingsScreen";
+import HomeScreen from "./screens/HomeScreen";
+import DashboardScreen from "./screens/DashboardScreen";
+
+const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+
+function MainTabs() {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Tab.Navigator
+      initialRouteName="Home"
+      screenOptions={({ route }) => ({
+        headerShown: false,
+
+        // 🔥 FIXED ICONS — ALL VALID
+        tabBarIcon: ({ color, size, focused }) => {
+          switch (route.name) {
+            case "Home":
+              return (
+                <Ionicons
+                  name={focused ? "home" : "home-outline"}
+                  size={size}
+                  color={color}
+                />
+              );
+
+            case "Devices":
+              return (
+                <MaterialCommunityIcons
+                  name="developer-board"
+                  size={size}
+                  color={color}
+                />
+              );
+
+            case "Dashboards":
+              return (
+                <MaterialCommunityIcons
+                  name={focused ? "view-dashboard" : "view-dashboard-outline"}
+                  size={size}
+                  color={color}
+                />
+              );
+
+            case "Notifications":
+              return (
+                <Ionicons
+                  name={
+                    focused ? "notifications" : "notifications-outline"
+                  }
+                  size={size}
+                  color={color}
+                />
+              );
+
+            case "Settings":
+              return (
+                <Ionicons
+                  name={focused ? "settings" : "settings-outline"}
+                  size={size}
+                  color={color}
+                />
+              );
+
+            default:
+              return (
+                <Ionicons
+                  name="ellipse-outline"
+                  size={size}
+                  color={color}
+                />
+              );
+          }
+        },
+
+        // LABEL STYLE
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "600",
+        },
+
+        tabBarActiveTintColor: COLORS.primary,
+        tabBarInactiveTintColor: "black",
+
+        // TAB BAR STYLE
+        tabBarStyle: {
+          position: "absolute",
+          bottom: 25,
+          left: 20,
+          right: 20,
+          elevation: 5,
+          backgroundColor: COLORS.card,
+          borderRadius: 15,
+          height: 70,
+          paddingBottom: 8,
+          ...styles.shadow,
+        },
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Devices" component={DevicesScreen} />
+      <Tab.Screen name="Dashboards" component={MainDashboardScreen} />
+      <Tab.Screen name="Notifications" component={NotificationsScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+}
+
+
+function AppStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="MainTabs" component={MainTabs} />
+      <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal' }} />
+      <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+    </Stack.Navigator> 
+  );
+}
+
+export default function RootNavigator() {
+  const { userToken, loading, isDarkTheme } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#007aff" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: COLORS.background }}}>
+      <Stack.Navigator screenOptions={{ 
+        headerStyle: {
+          backgroundColor: COLORS.card,
+        },
+        headerTintColor: COLORS.text,
+        headerTitleStyle: {
+          fontWeight: 'bold',
+        },
+        headerShadowVisible: false, // Hides the shadow/border under the header
+       }}>
+        {userToken ? (
+          <>
+            <Stack.Screen name="App" component={AppStack} options={{ headerShown: false }}/>
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+          </>
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  loaderContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
+  shadow: {
+    shadowColor: '#171717',
+    shadowOffset: {width: -2, height: 4},
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  tabBar: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
+    elevation: 3,
+    backgroundColor: "#fff",
+    borderRadius: 15,
+    height: 60,
+  },
+  iconName: {
+    fontSize: 24,
+    color: "#333",
+  },
+
+});

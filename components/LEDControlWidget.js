@@ -16,35 +16,62 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Platform,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
+import { Lightbulb, Calendar, Timer, Trash2, X } from "lucide-react-native";
+import { Ionicons } from "@expo/vector-icons"; // Keeping Ionicons for Modals to ensure compatibility
 import axios from "axios";
 import { AuthContext } from "../context/AuthContext";
-import { API_BASE } from "../screens/config";
+import { API_BASE } from "../constants/config";
+
+// Fallback colors if @/constants/colors is missing
+const Colors = {
+  white: "#FFFFFF",
+  gray: "#9CA3AF",
+  darkGray: "#1F2937",
+};
 
 export default function LEDControlWidget({
   title,
   widgetId,
   deviceId,
-  deviceToken,       // <-- You MUST pass a valid token from the parent!
+  deviceToken,
   virtualPin,
   nextSchedule,
   initialState = false,
   onLongPress,
-  onDelete,          // ✅ Delete handler
+  onDelete,
   onStateChange,
 }) {
-  // ✅ Use ref to track if we're updating from WebSocket to prevent flickering
+  // --- LOGIC FROM INPUT 2 ---
   const isUpdatingFromWS = useRef(false);
-  const [ledOn, setLedOn] = useState(() => initialState ? 1 : 0);
+  const [ledOn, setLedOn] = useState(() => (initialState ? 1 : 0));
   const [loading, setLoading] = useState(false);
+  
+  // Modal States
   const [scheduleModalVisible, setScheduleModalVisible] = useState(false);
   const [timerModalVisible, setTimerModalVisible] = useState(false);
+  
+  // Schedule Logic
   const [scheduleState, setScheduleState] = useState(true);
-  // Initialize with IST time (current time + 1 minute)
+  const [schedules, setSchedules] = useState([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  
+  // Timer Logic
+  const [timerState, setTimerState] = useState(true);
+  const [timerSeconds, setTimerSeconds] = useState("60");
+  const [timerLabel, setTimerLabel] = useState("");
+  const [scheduleLabel, setScheduleLabel] = useState("");
+
+  const prevWidgetIdRef = useRef(widgetId);
+  const { userToken, logout, wsRef } = useContext(AuthContext);
+
+  // Helper: Get IST Date
   const getISTDateTime = (offsetMinutes = 1) => {
     const now = new Date();
-    // Get current time in IST using toLocaleString
     const istString = now.toLocaleString("en-IN", {
       timeZone: "Asia/Kolkata",
       year: "numeric",
@@ -54,14 +81,12 @@ export default function LEDControlWidget({
       minute: "2-digit",
       hour12: false,
     });
-    // Parse IST string: format is "DD/MM/YYYY, HH:mm"
     const [datePart, timePart] = istString.split(", ");
     const [day, month, year] = datePart.split("/").map(Number);
     const [hours, minutes] = timePart.split(":").map(Number);
-    // Create date in local timezone (representing IST)
     const istDate = new Date(year, month - 1, day, hours, minutes);
     istDate.setMinutes(istDate.getMinutes() + offsetMinutes);
-    // Format as YYYY-MM-DDTHH:mm
+    
     const formattedYear = istDate.getFullYear();
     const formattedMonth = String(istDate.getMonth() + 1).padStart(2, "0");
     const formattedDay = String(istDate.getDate()).padStart(2, "0");
@@ -71,25 +96,10 @@ export default function LEDControlWidget({
   };
 
   const [scheduleDate, setScheduleDate] = useState(getISTDateTime(1));
-  const [scheduleLabel, setScheduleLabel] = useState("");
-  const [timerState, setTimerState] = useState(true);
-  const [timerSeconds, setTimerSeconds] = useState("60");
-  const [timerLabel, setTimerLabel] = useState("");
-  const [schedules, setSchedules] = useState([]);
-  const [loadingSchedules, setLoadingSchedules] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const prevWidgetIdRef = useRef(widgetId);
-
-  const { userToken, logout, wsRef } = useContext(AuthContext);
 
   const pendingSchedules = useMemo(
     () => schedules.filter((s) => s.status === "pending"),
     [schedules]
-  );
-
-  const nextPendingSchedule = useMemo(
-    () => pendingSchedules[0] || null,
-    [pendingSchedules]
   );
 
   const formatDateTime = (value) => {
@@ -97,7 +107,6 @@ export default function LEDControlWidget({
     try {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return value;
-      // Format in Asia/Kolkata timezone (IST)
       return date.toLocaleString("en-IN", {
         timeZone: "Asia/Kolkata",
         year: "numeric",
@@ -113,16 +122,10 @@ export default function LEDControlWidget({
     }
   };
 
-  useEffect(() => {
-    console.log("LED Widget received deviceToken:", deviceToken);
-  }, [deviceToken]);
+  // --- USE EFFECTS ---
 
-  // Only update from initialState when widgetId changes (new widget loaded)
-  // Don't override user actions or WebSocket updates
   useEffect(() => {
     if (prevWidgetIdRef.current !== widgetId) {
-      // Widget changed, update state from initial state
-      // Only update if not currently updating from WebSocket
       if (!isUpdatingFromWS.current) {
         setLedOn(initialState ? 1 : 0);
       }
@@ -136,16 +139,12 @@ export default function LEDControlWidget({
       setLoadingSchedules(true);
       const res = await axios.get(
         `${API_BASE}/widgets/${widgetId}/schedule`,
-        {
-          headers: { Authorization: `Bearer ${userToken}` },
-        }
+        { headers: { Authorization: `Bearer ${userToken}` } }
       );
-      const list = Array.isArray(res.data?.schedules)
-        ? res.data.schedules
-        : [];
+      const list = Array.isArray(res.data?.schedules) ? res.data.schedules : [];
       setSchedules(list);
     } catch (err) {
-      console.error("LED schedule fetch error:", err.response?.data || err.message);
+      console.error("LED schedule fetch error:", err.message);
       if (err.response?.status === 401) logout?.();
     } finally {
       setLoadingSchedules(false);
@@ -160,62 +159,38 @@ export default function LEDControlWidget({
     if (!wsRef?.current || !widgetId) return;
     const targetWidgetId = widgetId.toString();
     const targetVirtualPin = virtualPin?.toLowerCase();
-
     const socket = wsRef.current;
+
     const handler = (event) => {
       try {
         if (!event.data) return;
         const msg = JSON.parse(event.data);
         if (!msg || typeof msg !== "object") return;
-        
-        // Handle widget-specific updates
-        if (
-          msg.type === "widget_update" &&
-          msg.widget?._id === targetWidgetId
-        ) {
+
+        if (msg.type === "widget_update" && msg.widget?._id === targetWidgetId) {
           const newValue = msg.widget?.value;
           if (newValue !== undefined && newValue !== null) {
             isUpdatingFromWS.current = true;
             setLedOn(newValue ? 1 : 0);
-            // Reset flag after state update
-            setTimeout(() => {
-              isUpdatingFromWS.current = false;
-            }, 100);
+            setTimeout(() => { isUpdatingFromWS.current = false; }, 100);
           }
           fetchSchedules();
-        } 
-        // Handle schedule events
-        else if (
-          (msg.type === "led_schedule_executed" ||
-            msg.type === "led_schedule_cancelled") &&
+        } else if (
+          (msg.type === "led_schedule_executed" || msg.type === "led_schedule_cancelled") &&
           msg.widget_id === targetWidgetId
         ) {
           fetchSchedules();
-        }
-        // Handle telemetry updates for this specific virtual pin
-        else if (msg.type === "telemetry_update" && targetVirtualPin) {
-          // Match device IDs (handle both string and ObjectId formats)
+        } else if (msg.type === "telemetry_update" && targetVirtualPin) {
           const msgDeviceId = msg.device_id;
           const widgetDeviceId = deviceId;
-          const deviceMatches = 
-            msgDeviceId === widgetDeviceId || 
-            String(msgDeviceId) === String(widgetDeviceId);
+          const deviceMatches = msgDeviceId === widgetDeviceId || String(msgDeviceId) === String(widgetDeviceId);
           
-          if (deviceMatches) {
-            // Only update if this is for our virtual pin - strict matching
-            if (msg.data && msg.data[targetVirtualPin] !== undefined) {
-              const newValue = msg.data[targetVirtualPin];
-              const currentValue = ledOn;
-              // Only update if value actually changed to prevent flickering
-              if (newValue !== currentValue) {
-                isUpdatingFromWS.current = true;
-                setLedOn(newValue ? 1 : 0);
-                console.log(`💡 LED ${targetVirtualPin} (widget ${targetWidgetId}) updated via WS:`, newValue ? "ON" : "OFF");
-                // Reset flag after state update
-                setTimeout(() => {
-                  isUpdatingFromWS.current = false;
-                }, 100);
-              }
+          if (deviceMatches && msg.data && msg.data[targetVirtualPin] !== undefined) {
+            const newValue = msg.data[targetVirtualPin];
+            if (newValue !== ledOn) {
+              isUpdatingFromWS.current = true;
+              setLedOn(newValue ? 1 : 0);
+              setTimeout(() => { isUpdatingFromWS.current = false; }, 100);
             }
           }
         }
@@ -226,64 +201,46 @@ export default function LEDControlWidget({
 
     socket.addEventListener("message", handler);
     return () => socket.removeEventListener("message", handler);
-  }, [wsRef, widgetId, deviceId, virtualPin, fetchSchedules]);
+  }, [wsRef, widgetId, deviceId, virtualPin, fetchSchedules, ledOn]);
 
-  // Removed polling - using WebSocket only for real-time updates
+  // --- ACTIONS ---
 
-  const toggleLED = async () => {
+  const handleToggle = async () => {
+    if (loading) return;
+
+    // Haptics from Input 1
+    if (Platform.OS !== 'web') {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
     if (!widgetId || !userToken) {
-      Alert.alert("Missing data", "Widget ID or user token is not available.");
+      Alert.alert("Error", "Missing data.");
       return;
     }
-    
-    // Prevent multiple rapid clicks
-    if (loading) {
-      console.log("⚠️ LED toggle already in progress");
-      return;
-    }
-    
+
     setLoading(true);
     const currentState = ledOn;
     const newState = currentState ? 0 : 1;
-    
-    // Optimistically update UI immediately (only if not updating from WS)
+
+    // Optimistic Update
     if (!isUpdatingFromWS.current) {
       setLedOn(newState);
     }
-    
+
     try {
       const res = await axios.post(
         `${API_BASE}/widgets/${widgetId}/state`,
         { state: newState },
-        { 
-          headers: { Authorization: `Bearer ${userToken}` },
-          timeout: 10000, // 10 second timeout
-        }
+        { headers: { Authorization: `Bearer ${userToken}` }, timeout: 10000 }
       );
-      
-      // State will be confirmed via WebSocket update, no need to refetch
-      if (res.status !== 200) {
-        // Revert on error
-        if (!isUpdatingFromWS.current) {
-          setLedOn(currentState);
-        }
-      }
-    } catch (err) {
-      console.error("LED toggle error:", err.response?.data || err.message);
-      
-      // Revert on error - restore previous state (only if not updating from WS)
-      if (!isUpdatingFromWS.current) {
+
+      if (res.status !== 200 && !isUpdatingFromWS.current) {
         setLedOn(currentState);
       }
-      
-      if (err.response?.status === 401) {
-        logout?.();
-        Alert.alert("Session Expired", "Please login again.");
-      } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        Alert.alert("Timeout", "Request took too long. Please check your connection.");
-      } else {
-        Alert.alert("Error", err.response?.data?.detail || "Failed to change LED state.");
-      }
+    } catch (err) {
+      if (!isUpdatingFromWS.current) setLedOn(currentState);
+      console.error("LED toggle error:", err.message);
+      if (err.response?.status === 401) logout?.();
     } finally {
       setLoading(false);
     }
@@ -292,17 +249,12 @@ export default function LEDControlWidget({
   const submitSchedule = async () => {
     if (!widgetId || !userToken) return;
     try {
-      // Parse the datetime string (assumed to be in IST format YYYY-MM-DDTHH:mm)
       let dateObj;
       if (scheduleDate.includes("T")) {
-        // Parse as IST time
         const [datePart, timePart] = scheduleDate.split("T");
         const [year, month, day] = datePart.split("-").map(Number);
         const [hours, minutes] = timePart.split(":").map(Number);
-        // Create a date object representing IST time
-        // We'll create it as if it were UTC, then adjust
         const istDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-        // IST is UTC+5:30, so subtract that offset to get actual UTC
         dateObj = new Date(istDate.getTime() - (5.5 * 60 * 60 * 1000));
       } else {
         dateObj = new Date(scheduleDate);
@@ -314,7 +266,6 @@ export default function LEDControlWidget({
       }
       
       setSubmitting(true);
-      // Send as ISO string - backend will handle IST conversion
       await axios.post(
         `${API_BASE}/widgets/${widgetId}/schedule`,
         {
@@ -326,13 +277,9 @@ export default function LEDControlWidget({
       );
       setScheduleModalVisible(false);
       setScheduleLabel("");
-      // Don't call onStateChange - it causes forced refetch
-      // Schedules will be updated via WebSocket
       fetchSchedules();
       Alert.alert("Scheduled", "LED schedule created.");
     } catch (err) {
-      console.error("Schedule error:", err.response?.data || err.message);
-      if (err.response?.status === 401) logout?.();
       Alert.alert("Error", err.response?.data?.detail || "Failed to create schedule.");
     } finally {
       setSubmitting(false);
@@ -359,13 +306,9 @@ export default function LEDControlWidget({
       );
       setTimerModalVisible(false);
       setTimerLabel("");
-      // Don't call onStateChange - it causes forced refetch
-      // Schedules will be updated via WebSocket
       fetchSchedules();
       Alert.alert("Timer set", "LED timer scheduled.");
     } catch (err) {
-      console.error("Timer error:", err.response?.data || err.message);
-      if (err.response?.status === 401) logout?.();
       Alert.alert("Error", err.response?.data?.detail || "Failed to set timer.");
     } finally {
       setSubmitting(false);
@@ -373,158 +316,110 @@ export default function LEDControlWidget({
   };
 
   const cancelSchedule = async (scheduleId) => {
-    if (!widgetId || !userToken) return;
     try {
       await axios.delete(
         `${API_BASE}/widgets/${widgetId}/schedule/${scheduleId}`,
         { headers: { Authorization: `Bearer ${userToken}` } }
       );
       fetchSchedules();
-      Alert.alert("Cancelled", "LED schedule cancelled.");
     } catch (err) {
-      console.error("Cancel schedule error:", err.response?.data || err.message);
-      if (err.response?.status === 401) logout?.();
       Alert.alert("Error", "Failed to cancel schedule.");
     }
   };
 
-  const renderUpcomingInfo = () => {
-    if (loadingSchedules) {
-      return <ActivityIndicator size="small" color={ledOn ? "#fff" : "#007AFF"} />;
-    }
-    if (pendingSchedules.length === 0) {
-      return (
-        <Text style={[styles.scheduleText, { color: ledOn ? "#e0f7ff" : "#4a5568" }]}>
-          No pending schedules
-        </Text>
-      );
-    }
+  // --- VISUAL LOGIC ---
 
-    return (
-      <View>
-        {pendingSchedules.slice(0, 2).map((s) => (
-          <Text
-            key={s._id || s.id}
-            style={[styles.scheduleText, { color: ledOn ? "#e0f7ff" : "#4a5568" }]}
-          >
-            {`${formatDateTime(s.execute_at)} → ${s.state ? "ON" : "OFF"}`}
-          </Text>
-        ))}
-      </View>
-    );
-  };
+  const gradientColors = ledOn
+    ? ['#fbbf24', '#f59e0b'] // Amber Gradient (ON)
+    : ['#374151', '#1f2937']; // Dark Gray Gradient (OFF)
+
+  // Prioritize pending schedule from API over prop, but use prop as fallback
+  const displaySchedule = pendingSchedules[0] || nextSchedule;
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { backgroundColor: ledOn ? "#4cd964" : "#fff" }]}
-      activeOpacity={0.8}
-      onPress={toggleLED}
-      onLongPress={onLongPress}
-      delayLongPress={600}
-      disabled={loading}
-    >
-      {onDelete && (
-        <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
-          <Ionicons name="trash-outline" size={20} color="#ff3b30" />
-        </TouchableOpacity>
-      )}
+    <>
+      <TouchableOpacity
+        onPress={handleToggle}
+        onLongPress={onLongPress}
+        activeOpacity={0.9}
+        disabled={loading}
+      >
+        <LinearGradient colors={gradientColors} style={styles.container}>
+          
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={[styles.iconContainer, ledOn && styles.iconContainerOn]}>
+              <Lightbulb
+                size={24}
+                color={ledOn ? '#fbbf24' : Colors.white}
+                fill={ledOn ? '#fbbf24' : 'transparent'}
+              />
+            </View>
+            
+            <View style={styles.headerRight}>
+              <View style={[styles.statusDot, ledOn ? styles.statusOn : styles.statusOff]} />
+              {onDelete && (
+                <TouchableOpacity 
+                  onPress={onDelete} 
+                  style={styles.deleteButton}
+                  hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+                >
+                  <Trash2 size={16} color={Colors.white} style={{ opacity: 0.7 }} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
-      <View style={styles.headerRow}>
-        {virtualPin && (
-          <Text
-            style={[
-              styles.pinTag,
-              { color: ledOn ? "#e0f7ff" : "#007AFF", borderColor: ledOn ? "#e0f7ff" : "#007AFF" },
-            ]}
-          >
-            {virtualPin.toUpperCase()}
-          </Text>
-        )}
-        {deviceId && (
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.deviceTag,
-              { color: ledOn ? "#e0f7ff" : "#4a5568" },
-            ]}
-          >
-            #{deviceId.toString().slice(-4)}
-          </Text>
-        )}
-      </View>
+          {/* Main Content */}
+          <View style={styles.content}>
+            <Text style={styles.title} numberOfLines={1}>
+              {title}
+            </Text>
+            <Text style={styles.statusText}>
+              {loading ? "..." : ledOn ? 'ON' : 'OFF'}
+            </Text>
+            {virtualPin && (
+              <Text style={styles.virtualPin}>
+                {virtualPin} {deviceId && `(#${deviceId.toString().slice(-4)})`}
+              </Text>
+            )}
+          </View>
 
-      <Ionicons
-        name={ledOn ? "bulb" : "bulb-outline"}
-        size={30}
-        color={ledOn ? "#fff" : "#007AFF"}
-        style={styles.icon}
-      />
-      <Text style={[styles.title, { color: ledOn ? "#fff" : "#333" }]}>{title}</Text>
-      <Text style={[styles.status, { color: ledOn ? "#fff" : "#007AFF" }]}>
-        {loading ? "..." : ledOn ? "ON" : "OFF"}
-      </Text>
+          {/* Footer: Next Schedule & Actions */}
+          <View style={styles.footer}>
+            {/* Action Buttons Row */}
+            <View style={styles.actionRow}>
+              <TouchableOpacity 
+                style={styles.miniButton} 
+                onPress={() => setScheduleModalVisible(true)}
+              >
+                <Calendar size={14} color={Colors.white} />
+                <Text style={styles.miniButtonText}>Plan</Text>
+              </TouchableOpacity>
 
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            { borderColor: ledOn ? "#fff" : "#007AFF" },
-          ]}
-          onPress={() => setScheduleModalVisible(true)}
-        >
-          <Ionicons
-            name="calendar-outline"
-            size={18}
-            color={ledOn ? "#fff" : "#007AFF"}
-          />
-          <Text
-            style={[
-              styles.actionText,
-              { color: ledOn ? "#fff" : "#007AFF" },
-            ]}
-          >
-            Schedule
-          </Text>
-        </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.miniButton} 
+                onPress={() => setTimerModalVisible(true)}
+              >
+                <Timer size={14} color={Colors.white} />
+                <Text style={styles.miniButtonText}>Timer</Text>
+              </TouchableOpacity>
+            </View>
 
-        <TouchableOpacity
-          style={[
-            styles.actionButton,
-            { borderColor: ledOn ? "#fff" : "#007AFF" },
-          ]}
-          onPress={() => setTimerModalVisible(true)}
-        >
-          <Ionicons
-            name="timer-outline"
-            size={18}
-            color={ledOn ? "#fff" : "#007AFF"}
-          />
-          <Text
-            style={[
-              styles.actionText,
-              { color: ledOn ? "#fff" : "#007AFF" },
-            ]}
-          >
-            Timer
-          </Text>
-        </TouchableOpacity>
-      </View>
+            {/* Schedule Text */}
+            {displaySchedule && (
+              <Text style={styles.scheduleText} numberOfLines={1}>
+                Next: {displaySchedule.action === 'on' || displaySchedule.state ? 'ON' : 'OFF'} @ 
+                {displaySchedule.time ? displaySchedule.time : 
+                 (displaySchedule.execute_at ? formatDateTime(displaySchedule.execute_at).split(',')[1] : '')}
+              </Text>
+            )}
+          </View>
 
-      <View style={styles.schedulePreview}>
-        {nextSchedule && (
-          <Text
-            style={[
-              styles.scheduleText,
-              styles.nextScheduleText,
-              { color: ledOn ? "#e0f7ff" : "#1a202c" },
-            ]}
-          >
-            Next: {formatDateTime(nextSchedule)}
-          </Text>
-        )}
-        {renderUpcomingInfo()}
-      </View>
+        </LinearGradient>
+      </TouchableOpacity>
 
+      {/* --- SCHEDULE MODAL (From Input 2) --- */}
       <Modal
         visible={scheduleModalVisible}
         transparent
@@ -540,80 +435,48 @@ export default function LEDControlWidget({
 
             <View style={styles.toggleRow}>
               <TouchableOpacity
-                style={[
-                  styles.toggleChip,
-                  scheduleState && styles.toggleChipActive,
-                ]}
+                style={[styles.toggleChip, scheduleState && styles.toggleChipActive]}
                 onPress={() => setScheduleState(true)}
               >
-                <Text
-                  style={[
-                    styles.toggleChipText,
-                    scheduleState && styles.toggleChipTextActive,
-                  ]}
-                >
-                  Turn ON
-                </Text>
+                <Text style={[styles.toggleChipText, scheduleState && styles.toggleChipTextActive]}>Turn ON</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.toggleChip,
-                  !scheduleState && styles.toggleChipActive,
-                ]}
+                style={[styles.toggleChip, !scheduleState && styles.toggleChipActive]}
                 onPress={() => setScheduleState(false)}
               >
-                <Text
-                  style={[
-                    styles.toggleChipText,
-                    !scheduleState && styles.toggleChipTextActive,
-                  ]}
-                >
-                  Turn OFF
-                </Text>
+                <Text style={[styles.toggleChipText, !scheduleState && styles.toggleChipTextActive]}>Turn OFF</Text>
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.modalLabel}>Execute At (IST - YYYY-MM-DDTHH:mm):</Text>
+            <Text style={styles.modalLabel}>Execute At (IST):</Text>
             <TextInput
               style={styles.input}
               value={scheduleDate}
               onChangeText={setScheduleDate}
-              placeholder="2025-01-01T12:00"
+              placeholder="YYYY-MM-DDTHH:mm"
               autoCapitalize="none"
-              autoCorrect={false}
             />
-            <Text style={styles.modalHint}>
-              Current IST: {new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
-            </Text>
-
-            <Text style={styles.modalLabel}>Label (optional):</Text>
+            
+            <Text style={styles.modalLabel}>Label:</Text>
             <TextInput
               style={styles.input}
               value={scheduleLabel}
               onChangeText={setScheduleLabel}
-              placeholder="Morning schedule"
+              placeholder="Optional label"
             />
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalCancel]}
-                onPress={() => setScheduleModalVisible(false)}
-              >
+              <TouchableOpacity style={[styles.modalBtn, styles.modalCancel]} onPress={() => setScheduleModalVisible(false)}>
                 <Text style={styles.modalCancelText}>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalConfirm]}
-                onPress={submitSchedule}
-                disabled={submitting}
-              >
-                <Text style={styles.modalConfirmText}>
-                  {submitting ? "Saving..." : "Save"}
-                </Text>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalConfirm]} onPress={submitSchedule} disabled={submitting}>
+                <Text style={styles.modalConfirmText}>{submitting ? "Saving..." : "Save"}</Text>
               </TouchableOpacity>
             </View>
 
+            {/* Pending List inside Modal */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalLabel}>Pending Schedules</Text>
+              <Text style={styles.modalLabel}>Pending</Text>
               <ScrollView style={styles.scheduleList}>
                 {pendingSchedules.length === 0 ? (
                   <Text style={styles.emptyText}>No pending entries.</Text>
@@ -621,12 +484,8 @@ export default function LEDControlWidget({
                   pendingSchedules.map((s) => (
                     <View key={s._id || s.id} style={styles.scheduleRow}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.scheduleRowTitle}>
-                          {formatDateTime(s.execute_at)}
-                        </Text>
-                        <Text style={styles.scheduleRowSubtitle}>
-                          {s.state ? "ON" : "OFF"} {s.label ? `• ${s.label}` : ""}
-                        </Text>
+                        <Text style={styles.scheduleRowTitle}>{formatDateTime(s.execute_at)}</Text>
+                        <Text style={styles.scheduleRowSubtitle}>{s.state ? "ON" : "OFF"} {s.label ? `• ${s.label}` : ""}</Text>
                       </View>
                       <TouchableOpacity onPress={() => cancelSchedule(s._id || s.id)}>
                         <Ionicons name="close-circle" size={20} color="#ff3b30" />
@@ -640,6 +499,7 @@ export default function LEDControlWidget({
         </View>
       </Modal>
 
+      {/* --- TIMER MODAL (From Input 2) --- */}
       <Modal
         visible={timerModalVisible}
         transparent
@@ -655,36 +515,16 @@ export default function LEDControlWidget({
 
             <View style={styles.toggleRow}>
               <TouchableOpacity
-                style={[
-                  styles.toggleChip,
-                  timerState && styles.toggleChipActive,
-                ]}
+                style={[styles.toggleChip, timerState && styles.toggleChipActive]}
                 onPress={() => setTimerState(true)}
               >
-                <Text
-                  style={[
-                    styles.toggleChipText,
-                    timerState && styles.toggleChipTextActive,
-                  ]}
-                >
-                  Turn ON
-                </Text>
+                <Text style={[styles.toggleChipText, timerState && styles.toggleChipTextActive]}>Turn ON</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.toggleChip,
-                  !timerState && styles.toggleChipActive,
-                ]}
+                style={[styles.toggleChip, !timerState && styles.toggleChipActive]}
                 onPress={() => setTimerState(false)}
               >
-                <Text
-                  style={[
-                    styles.toggleChipText,
-                    !timerState && styles.toggleChipTextActive,
-                  ]}
-                >
-                  Turn OFF
-                </Text>
+                <Text style={[styles.toggleChipText, !timerState && styles.toggleChipTextActive]}>Turn OFF</Text>
               </TouchableOpacity>
             </View>
 
@@ -697,146 +537,155 @@ export default function LEDControlWidget({
               placeholder="60"
             />
 
-            <Text style={styles.modalLabel}>Label (optional)</Text>
-            <TextInput
-              style={styles.input}
-              value={timerLabel}
-              onChangeText={setTimerLabel}
-              placeholder="Short timer"
-            />
-
             <View style={styles.quickRow}>
               {[60, 300, 600, 1800].map((sec) => (
-                <TouchableOpacity
-                  key={sec}
-                  style={styles.quickChip}
-                  onPress={() => setTimerSeconds(String(sec))}
-                >
-                  <Text style={styles.quickChipText}>
-                    {sec >= 60 ? `${Math.round(sec / 60)}m` : `${sec}s`}
-                  </Text>
+                <TouchableOpacity key={sec} style={styles.quickChip} onPress={() => setTimerSeconds(String(sec))}>
+                  <Text style={styles.quickChipText}>{sec >= 60 ? `${Math.round(sec / 60)}m` : `${sec}s`}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalCancel]}
-                onPress={() => setTimerModalVisible(false)}
-              >
+              <TouchableOpacity style={[styles.modalBtn, styles.modalCancel]} onPress={() => setTimerModalVisible(false)}>
                 <Text style={styles.modalCancelText}>Close</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalConfirm]}
-                onPress={submitTimer}
-                disabled={submitting}
-              >
-                <Text style={styles.modalConfirmText}>
-                  {submitting ? "Saving..." : "Start"}
-                </Text>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalConfirm]} onPress={submitTimer} disabled={submitting}>
+                <Text style={styles.modalConfirmText}>{submitting ? "Start" : "Start"}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </TouchableOpacity>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: 180,
-    height: 200,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 4,
+  // --- Main Widget Styles (Based on Input 1) ---
+  container: {
+    width: 170, // Slightly wider to fit buttons
+    height: 190, // Taller to fit content
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: 'space-between',
     margin: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
-  deleteBtn: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    zIndex: 10,
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  headerRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainerOn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  statusOn: { backgroundColor: '#22c55e' },
+  statusOff: { backgroundColor: '#6b7280' },
+  deleteButton: {
     padding: 4,
-    backgroundColor: "#ffffffaa",
-    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 8,
   },
-  headerRow: {
-    position: "absolute",
-    top: 8,
-    left: 10,
-    right: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
-  pinTag: {
-    fontSize: 12,
-    fontWeight: "bold",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
+  title: {
+    fontSize: 14,
+    color: Colors.white,
+    fontWeight: '600',
+    marginBottom: 2,
+    opacity: 0.9,
   },
-  deviceTag: {
-    fontSize: 12,
-    opacity: 0.8,
+  statusText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 0.5,
   },
-  icon: { marginBottom: 8 },
-  title: { fontSize: 14, fontWeight: "600" },
-  status: { fontSize: 16, fontWeight: "bold", marginTop: 6 },
-  actionsRow: {
-    flexDirection: "row",
-    marginTop: 10,
-    gap: 10,
+  virtualPin: {
+    fontSize: 10,
+    color: Colors.white,
+    opacity: 0.6,
+    fontWeight: '500',
+    marginTop: 2,
   },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
+  footer: {
+    gap: 8,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  miniButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
     paddingHorizontal: 8,
     paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
   },
-  actionText: {
-    fontSize: 12,
-    marginLeft: 4,
-    fontWeight: "600",
-  },
-  schedulePreview: {
-    marginTop: 6,
-    alignItems: "center",
+  miniButtonText: {
+    color: Colors.white,
+    fontSize: 10,
+    fontWeight: '600',
   },
   scheduleText: {
     fontSize: 10,
-    textAlign: "center",
+    color: Colors.white,
+    opacity: 0.8,
+    fontWeight: '500',
+    textAlign: 'left',
   },
-  nextScheduleText: {
-    fontWeight: "600",
-  },
+
+  // --- Modal Styles (From Input 2) ---
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
   },
   modalCard: {
     width: "90%",
-    maxHeight: "90%",
+    maxHeight: "85%",
     backgroundColor: "#fff",
     borderRadius: 18,
     padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
     gap: 10,
   },
   modalTitle: {
@@ -851,115 +700,117 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 6,
   },
-  modalHint: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginTop: 4,
-    fontStyle: "italic",
-  },
   input: {
     borderWidth: 1,
-    borderColor: "#cbd5f5",
+    borderColor: "#e2e8f0",
     borderRadius: 10,
-    padding: 10,
+    padding: 12,
     fontSize: 14,
     color: "#111827",
+    backgroundColor: "#f8fafc",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 10,
+  },
+  toggleChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f8fafc",
+  },
+  toggleChipActive: {
+    backgroundColor: "#eff6ff",
+    borderColor: "#3b82f6",
+  },
+  toggleChipText: {
+    color: "#64748b",
+    fontWeight: "600",
+  },
+  toggleChipTextActive: {
+    color: "#3b82f6",
+    fontWeight: "700",
+  },
+  quickRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  quickChip: {
+    backgroundColor: "#f1f5f9",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  quickChipText: {
+    fontSize: 12,
+    color: "#475569",
+    fontWeight: "600",
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    marginTop: 16,
+    marginTop: 20,
     gap: 12,
   },
   modalBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     borderRadius: 10,
+    minWidth: 80,
+    alignItems: 'center',
   },
   modalCancel: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "#f1f5f9",
   },
   modalConfirm: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#2563eb",
   },
   modalCancelText: {
-    color: "#1e293b",
+    color: "#475569",
     fontWeight: "600",
   },
   modalConfirmText: {
     color: "#fff",
     fontWeight: "700",
   },
-  toggleRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  toggleChip: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#cbd5f5",
-    borderRadius: 12,
-    paddingVertical: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  toggleChipActive: {
-    backgroundColor: "#007AFF",
-    borderColor: "#007AFF",
-  },
-  toggleChipText: {
-    fontWeight: "600",
-    color: "#1f2937",
-  },
-  toggleChipTextActive: {
-    color: "#fff",
-  },
   modalSection: {
-    marginTop: 16,
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e8f0",
+    paddingTop: 10,
+    flex: 1,
   },
   scheduleList: {
-    maxHeight: 180,
-    marginTop: 8,
+    maxHeight: 150,
   },
   emptyText: {
-    color: "#6b7280",
-    fontSize: 13,
+    color: "#94a3b8",
+    fontStyle: "italic",
     textAlign: "center",
-    marginVertical: 8,
+    marginTop: 10,
   },
   scheduleRow: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 8,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f1f5f9",
   },
   scheduleRowTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    color: "#1e293b",
+    color: "#334155",
   },
   scheduleRowSubtitle: {
-    fontSize: 12,
-    color: "#475569",
-    marginTop: 2,
-  },
-  quickRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12,
-  },
-  quickChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
-    backgroundColor: "#e0f2fe",
-  },
-  quickChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#0369a1",
+    fontSize: 11,
+    color: "#64748b",
   },
 });

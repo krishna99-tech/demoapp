@@ -3,12 +3,13 @@ import React, {
   useContext,
   useState,
   useRef,
+  useEffect,
+  useCallback,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert } from "react-native";
-import { BASE_URL, WS_URL } from "../screens/config";
+import { BASE_URL, WS_URL } from "../constants/config";
 import API from "../services/api";
-import { useEffect } from "react";
 
 export const AuthContext = createContext(null);
 
@@ -31,6 +32,7 @@ export const AuthProvider = ({ children }) => {
   const [widgets, setWidgets] = useState([]);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const wsRef = useRef(null);
   const sseAbortController = useRef(null); // For aborting SSE fetch
@@ -44,13 +46,18 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = await AsyncStorage.getItem("userToken");
         const storedUser = await AsyncStorage.getItem("username");
+        const storedTheme = await AsyncStorage.getItem("theme");
+
+        if (storedTheme) {
+          setIsDarkTheme(storedTheme === "dark");
+        }
+
         if (token && storedUser) {
           setUserToken(token);
           setUsername(storedUser);
-          await fetchDevices(token);
-
-          connectWebSocket(token); // USE WEBSOCKET FOR REAL-TIME
-          // connectSSE(token); // Or use SSE if that's what your backend requires
+          // Ensure devices are fetched BEFORE connecting to WebSocket
+          await fetchDevices(token); 
+          connectWebSocket(token);
         }
       } catch (err) {
         console.error("Init error:", err);
@@ -60,6 +67,26 @@ export const AuthProvider = ({ children }) => {
     };
     init();
   }, []);
+
+  // ====================================
+  // 🔄 PERIODIC DEVICE REFRESH (DISABLED - Using real-time updates only)
+  // ====================================
+  // Periodic refresh is disabled to rely purely on real-time WebSocket updates
+  // Only refresh on app focus or manual refresh
+  // Uncomment below if you need periodic sync (e.g., every 5 minutes)
+  /*
+  useEffect(() => {
+    if (!userToken) return;
+    
+    // Refresh devices every 5 minutes as a safety net (only if needed)
+    const refreshInterval = setInterval(() => {
+      console.log("[CTX] 🔄 Periodic device refresh (safety net)...");
+      fetchDevices(userToken).catch(err => console.error("Periodic device refresh failed:", err));
+    }, 300000); // 5 minutes - only as safety net
+    
+    return () => clearInterval(refreshInterval);
+  }, [userToken]);
+  */
 
   // ====================================
   // 🔐 LOGIN
@@ -82,11 +109,9 @@ export const AuthProvider = ({ children }) => {
         setUserToken(data.access_token);
         setUsername(data.user?.username || usernameInput.trim());
 
+        // Ensure devices are fetched BEFORE connecting to WebSocket
         await fetchDevices(data.access_token);
-
-        // USE WEBSOCKET FOR REAL-TIME
         connectWebSocket(data.access_token);
-        // connectSSE(data.access_token); // Or use SSE if that's what your backend requires
 
         Alert.alert("Login Success", `Welcome ${data.user?.username || ""}!`);
         navigation?.reset({ index: 0, routes: [{ name: "MainTabs" }] });
@@ -128,7 +153,7 @@ export const AuthProvider = ({ children }) => {
     try {
       await API.logout();
       isReconnecting.current = false; // Prevent WS from reconnecting on logout
-      wsRef.current?.close();
+      wsRef.current?.close(4000, "User logged out"); // Use a custom code for intentional closure
       // Abort any ongoing SSE connection
       if (sseAbortController.current) {
         sseAbortController.current.abort();
@@ -150,26 +175,84 @@ export const AuthProvider = ({ children }) => {
   };
 
   // ====================================
+  // 🌗 THEME
+  // ====================================
+  const toggleTheme = async () => {
+    try {
+      const newTheme = !isDarkTheme;
+      setIsDarkTheme(newTheme);
+      await AsyncStorage.setItem("theme", newTheme ? "dark" : "light");
+    } catch (err) {
+      console.error("Failed to save theme:", err);
+      Alert.alert("Error", "Could not save theme preference.");
+    }
+  };
+
+  // ====================================
   // ⚙️ DEVICES
   // ====================================
   const fetchDevices = async (token = userToken) => {
+    setIsRefreshing(true);
     try {
       const data = await API.getDevices();
       if (Array.isArray(data)) {
-        // Before replacing state entirely, merge with existing:
-        setDevices((prevDevices) =>
-          data.map((serverDev) => {
-            const local = prevDevices.find(
-              (d) => String(d.id ?? d._id) === String(serverDev.id ?? serverDev._id)
-            );
-            return local && local.telemetry
-              ? { ...serverDev, telemetry: local.telemetry, lastTelemetry: local.lastTelemetry }
-              : serverDev;
-          })
-        );
+        setDevices((prevDevices) => {
+          const prevDevicesMap = new Map(
+            prevDevices.map((d) => {
+              // Create entries for both _id and id to ensure matching works
+              const id1 = String(d._id || d.id);
+              const id2 = String(d.id || d._id);
+              return [[id1, d], [id2, d]];
+            }).flat()
+          );
+          
+          const updatedDevices = data.map((serverDev) => {
+            // Ensure we have both _id and id for compatibility
+            const serverId = String(serverDev._id || serverDev.id);
+            const local = prevDevicesMap.get(serverId);
+            
+            // Preserve telemetry and other local state if it exists
+            if (local) {
+              // Use server status if it's more recent (device was updated on server)
+              // But preserve local telemetry which might be more recent from WebSocket
+              const serverStatus = serverDev.status || "offline";
+              const localStatus = local.status;
+              
+              // Use server status if it's "online" (more authoritative) or if local doesn't have status
+              const finalStatus = (serverStatus === "online" || !localStatus) ? serverStatus : localStatus;
+              
+              return {
+                ...serverDev,
+                // Ensure both _id and id are available for matching
+                _id: serverDev._id || serverDev.id,
+                id: serverDev.id || serverDev._id,
+                // Preserve telemetry if it exists locally (real-time updates)
+                telemetry: local.telemetry || serverDev.telemetry || {},
+                lastTelemetry: local.lastTelemetry || serverDev.lastTelemetry,
+                // Use the most recent status
+                status: finalStatus,
+                // Use server last_active if it's more recent
+                last_active: serverDev.last_active || local.last_active,
+              };
+            }
+            // New device - ensure status is set and both ID fields are available
+            return {
+              ...serverDev,
+              _id: serverDev._id || serverDev.id,
+              id: serverDev.id || serverDev._id,
+              status: serverDev.status || "offline",
+              telemetry: serverDev.telemetry || {},
+            };
+          });
+          
+          console.log("[CTX] Devices fetched:", updatedDevices.length, "Statuses:", updatedDevices.map(d => ({ id: d._id || d.id, status: d.status })));
+          return updatedDevices;
+        });
       }
     } catch (err) {
       console.error("Fetch devices failed:", err);
+    } finally {
+      setIsRefreshing(false);
     };
   };
 
@@ -185,17 +268,37 @@ export const AuthProvider = ({ children }) => {
         // Add device to state immediately for optimistic update
         setDevices((prev) => {
           // Check if device already exists (prevent duplicates)
-          const exists = prev.some((d) => 
-            (d.id || d._id) === (data.id || data._id) ||
-            d.device_token === data.device_token
-          );
+          const newDeviceId = String(data.id || data._id);
+          const exists = prev.some((d) => {
+            const deviceId = String(d.id || d._id);
+            return deviceId === newDeviceId || d.device_token === data.device_token;
+          });
+          
           if (exists) {
-            // Update existing device
-            return prev.map((d) => 
-              (d.id || d._id) === (data.id || data._id) ? data : d
-            );
+            // Update existing device, preserve telemetry if it exists
+            return prev.map((d) => {
+              const deviceId = String(d.id || d._id);
+              if (deviceId === newDeviceId) {
+                return {
+                  ...data,
+                  _id: data._id || data.id,
+                  id: data.id || data._id,
+                  telemetry: d.telemetry || {},
+                  lastTelemetry: d.lastTelemetry,
+                  status: d.status || data.status || "offline",
+                };
+              }
+              return d;
+            });
           }
-          return [...prev, data];
+          // New device - ensure it has proper initial state and both ID fields
+          return [...prev, {
+            ...data,
+            _id: data._id || data.id,
+            id: data.id || data._id,
+            status: data.status || "offline",
+            telemetry: {},
+          }];
         });
         return data;
       }
@@ -205,6 +308,31 @@ export const AuthProvider = ({ children }) => {
       const errorMessage = err.response?.data?.detail || err.message || "Failed to add device";
       throw new Error(errorMessage);
     };
+  };
+
+  const updateDevice = async (deviceId, deviceData) => {
+    try {
+      if (!deviceData?.name?.trim()) {
+        throw new Error("Device name cannot be empty");
+      }
+      // Assuming you have an API.updateDevice method in your services
+      const updatedDevice = await API.updateDevice(deviceId, deviceData);
+      if (updatedDevice) {
+        setDevices((prev) =>
+          prev.map((d) =>
+            (d.id || d._id) === (updatedDevice.id || updatedDevice._id)
+              ? { ...d, ...updatedDevice }
+              : d
+          )
+        );
+        return updatedDevice;
+      }
+      throw new Error("Invalid response from server on update");
+    } catch (err) {
+      console.error("Update device error:", err);
+      const errorMessage = err.response?.data?.detail || err.message || "Failed to update device";
+      throw new Error(errorMessage);
+    }
   };
 
   const deleteDevice = async (deviceId) => {
@@ -234,13 +362,39 @@ export const AuthProvider = ({ children }) => {
     try {
       const json = await API.getTelemetry(device_token);
       // Also update in context
-      if (json?.device_id) {
+      if (json?.device_id && json?.data) {
         setDevices((prev) =>
-          prev.map((d) =>
-            String(d.id ?? d._id) === String(json.device_id)
-              ? { ...d, telemetry: json.data, lastTelemetry: json.timestamp }
-              : d
-          )
+          prev.map((d) => {
+            const deviceId = String(d.id ?? d._id);
+            const jsonDeviceId = String(json.device_id);
+            if (deviceId === jsonDeviceId) {
+              // Merge with existing telemetry to preserve real-time updates
+              const existingTelemetry = d.telemetry || {};
+              const updatedDevice = {
+                ...d,
+                telemetry: { ...existingTelemetry, ...json.data },
+                lastTelemetry: json.timestamp || new Date().toISOString(),
+                // Update status to online when telemetry is fetched
+                status: "online",
+                last_active: json.timestamp || new Date().toISOString(),
+              };
+              
+              // Sync common telemetry fields to top level
+              if (json.data.temperature !== undefined) {
+                updatedDevice.value = json.data.temperature;
+                updatedDevice.unit = "°C";
+              } else if (json.data.humidity !== undefined) {
+                updatedDevice.value = json.data.humidity;
+                updatedDevice.unit = "%";
+              } else if (json.data.value !== undefined) {
+                updatedDevice.value = json.data.value;
+              }
+              
+              console.log("[CTX] Telemetry fetched for device", json.device_id);
+              return updatedDevice;
+            }
+            return d;
+          })
         );
       }
       return json?.data || {};
@@ -335,34 +489,164 @@ export const AuthProvider = ({ children }) => {
   // ⚡ REAL-TIME MESSAGE HANDLER (for WS & SSE)
   // ====================================
   const handleRealtimeMessage = (msg) => {
-    if (!msg || typeof msg !== "object") return;
-    // Determine if backend is sending {type, payload: {device_id, data, ...}} or {type, device_id, data, timestamp}
-    let m = msg;
-    if (msg.payload && typeof msg.payload === "object") {
-      m = { ...msg.payload, type: msg.type };
+    if (!msg || typeof msg !== "object") {
+      console.warn("[CTX] Invalid message received:", msg);
+      return;
+    }
+    
+    let m;
+    // Standardize message parsing: unwrap payload or global_event data
+    if (msg.type === "global_event" && msg.data) { // For SSE global events
+      m = msg.data;
+    } else if (msg.payload && typeof msg.payload === "object") { // For messages with a payload wrapper
+      m = { ...msg.payload, type: msg.type }; // Combine type with payload content
+    } else { // For flat messages (WebSocket direct messages)
+      m = msg;
     }
 
+    if (!m || !m.type) {
+      console.warn("[CTX] Message missing type:", m);
+      return; // Ignore messages without a type after parsing
+    }
+
+    // Helper function to normalize device IDs for comparison
+    const normalizeDeviceId = (deviceId) => {
+      if (!deviceId) return null;
+      // Handle both string and ObjectId-like formats
+      const str = String(deviceId).trim();
+      return str;
+    };
+
+    // Helper function to match device IDs - handles both _id and id fields
+    const matchesDevice = (device, targetId) => {
+      if (!device || !targetId) return false;
+      
+      // Try multiple ID formats for robust matching
+      const deviceId1 = normalizeDeviceId(device.id);
+      const deviceId2 = normalizeDeviceId(device._id);
+      const target = normalizeDeviceId(targetId);
+      
+      // Check if any device ID matches the target
+      return deviceId1 === target || deviceId2 === target;
+    };
+
+    // Log important messages only (skip ping/pong and connected messages)
+    if (__DEV__ && m.type !== "pong" && m.type !== "ping" && m.type !== "connected") {
+      console.log("[CTX] Processing message type:", m.type, "device_id:", m.device_id);
+    }
+
+    // Handle telemetry updates
     if (m.type === "telemetry_update" && m.device_id && m.data) {
-      setDevices((prevDevices) =>
-        prevDevices.map((d) =>
-          String(d.id ?? d._id) === String(m.device_id)
-            ? { ...d, telemetry: { ...(d.telemetry || {}), ...m.data }, lastTelemetry: m.timestamp || new Date().toISOString() }
-            : d
-        )
-      );
-      setLastUpdated(new Date().toISOString());
-      console.log("[CTX] Telemetry updated for device", m.device_id, m.data);
+      setDevices((prevDevices) => {
+        let found = false;
+        let deviceName = "Unknown";
+        
+        const updated = prevDevices.map((d) => {
+          if (matchesDevice(d, m.device_id)) {
+            found = true;
+            deviceName = d.name || "Unknown";
+            
+            // Preserve existing telemetry and merge new data
+            const existingTelemetry = d.telemetry || {};
+            const newTelemetry = { ...existingTelemetry, ...m.data };
+
+            // Also update device-level properties if they exist in telemetry
+            const updatedDevice = {
+              ...d,
+              telemetry: newTelemetry,
+              lastTelemetry: m.timestamp || new Date().toISOString(),
+              // Update status to online when telemetry is received (device is active)
+              status: "online",
+              last_active: m.timestamp || new Date().toISOString(),
+            };
+
+            // Sync top-level `value` if it exists in telemetry, for components like DeviceCard
+            if (m.data.value !== undefined) {
+              updatedDevice.value = m.data.value;
+            }
+
+            // Also sync other common telemetry fields to top level for easier access
+            if (m.data.temperature !== undefined) {
+              updatedDevice.value = m.data.temperature;
+              updatedDevice.unit = "°C";
+            } else if (m.data.humidity !== undefined) {
+              updatedDevice.value = m.data.humidity;
+              updatedDevice.unit = "%";
+            }
+
+            if (__DEV__) {
+              console.log("[CTX] ✅ Telemetry updated for device", m.device_id, deviceName, "Status: online", Object.keys(m.data));
+            }
+            return updatedDevice;
+          }
+          return d;
+        });
+        
+        if (!found) {
+          // Only log if this is a persistent issue (device should exist)
+          // Don't fetch devices immediately - wait for next natural refresh
+          // Real-time updates should handle this via WebSocket
+          if (__DEV__) {
+            console.warn("[CTX] ⚠️ Telemetry update for device not in current state:", m.device_id);
+          }
+        }
+        
+        return updated;
+      });
+      setLastUpdated(m.timestamp || new Date().toISOString());
+    } 
+    // Handle status updates (device_status or status_update)
+    // Handle initial state sent from backend on WebSocket connect
+    else if (m.type === "initial_state" && Array.isArray(m.devices)) {
+      console.log("[CTX] ✅ Received initial device state from WebSocket.");
+      // This completely replaces the current device list with the authoritative one from the server
+      setDevices(m.devices.map(d => ({
+        ...d,
+        _id: d._id || d.id, // Ensure both ID formats are present
+        id: d.id || d._id,
+      })));
     } else if ((m.type === "device_status" || m.type === "status_update") && m.device_id) {
-      setDevices((prevDevices) =>
-        prevDevices.map((d) =>
-          String(d.id ?? d._id) === String(m.device_id)
-            ? { ...d, status: m.status, last_active: m.timestamp }
-            : d
-        )
-      );
-    } else if (m.type !== "pong" && m.type !== "ping") {
-      // Log other message types for debugging, ignoring pings/pongs
-      console.log("[CTX] Received unhandled message type:", m.type, m);
+
+      setDevices((prevDevices) => {
+        let found = false;
+        let deviceName = "Unknown";
+        
+        const updated = prevDevices.map((d) => {
+          if (matchesDevice(d, m.device_id)) {
+            found = true;
+            deviceName = d.name || "Unknown";
+            const updated = {
+              ...d,
+              status: m.status || d.status || "offline",
+              last_active: m.timestamp || m.last_active || d.last_active || new Date().toISOString(),
+            };
+            if (__DEV__) {
+              console.log("[CTX] ✅ Status updated for device", m.device_id, deviceName, "Status:", updated.status);
+            }
+            return updated;
+          }
+          return d;
+        });
+        
+        if (!found) {
+          // Only log if this is a persistent issue (device should exist)
+          // Don't fetch devices immediately - wait for next natural refresh
+          // Real-time updates should handle this via WebSocket
+          if (__DEV__) {
+            console.warn("[CTX] ⚠️ Status update for device not in current state:", m.device_id);
+          }
+        }
+        
+        return updated;
+      });
+    } 
+    // Handle ping/pong (ignore)
+    else if (m.type === "pong" || m.type === "ping") {
+      // Silently ignore ping/pong messages
+    } 
+    // Log other message types for debugging
+    else {
+      console.log("[CTX] 📨 Received unhandled message type:", m.type, m);
     }
   };
 
@@ -402,13 +686,29 @@ const connectWebSocket = (token) => {
   // ✅ Handle incoming messages
   ws.onmessage = async (event) => {
     try {
-      if (!event.data) return; // Skip empty messages
+      // Ensure event.data is a non-empty string before parsing
+      if (typeof event.data !== 'string' || event.data.trim() === '') {
+        console.log("[WS] Received empty or non-string message.");
+        return;
+      }
 
       const msg = JSON.parse(event.data);
+      
+      // Log received messages for debugging
+      console.log("[WS] 📨 Received message:", {
+        type: msg.type,
+        device_id: msg.device_id || 'N/A',
+        status: msg.status || 'N/A',
+        hasData: !!msg.data,
+        dataKeys: msg.data ? Object.keys(msg.data) : []
+      });
+      
       handleRealtimeMessage(msg);
     } catch (err) {
-      console.error("❌ WebSocket parse error:", err);
-      console.log("Raw event data:", event.data);
+      // Log the raw data for debugging if JSON parsing fails
+      console.error("❌ WebSocket JSON parse error:", err.message);
+      console.log("Raw WebSocket data:", event.data);
+      // Don't throw - continue processing other messages
     }
   };
 
@@ -417,8 +717,11 @@ const connectWebSocket = (token) => {
     console.warn("⚠️ WS closed:", e.code, e.reason);
     clearInterval(pingInterval);
 
-    // Attempt reconnection only if not intentionally disconnected (e.g., logout)
-    if (isReconnecting.current) {
+    // Do not reconnect if it was an intentional closure (e.g., logout)
+    // We use code 4000 in the logout function for this purpose.
+    const isIntentionalClosure = e.code === 4000;
+
+    if (isReconnecting.current && !isIntentionalClosure) {
       setTimeout(() => {
         console.log("🔄 Reconnecting WebSocket...");
         connectWebSocket(token);
@@ -438,10 +741,18 @@ const connectWebSocket = (token) => {
   // 🌍 CONTEXT PROVIDER VALUE
   // ====================================
   useEffect(() => {
-    if (devices) {
-      console.log("[CTX] Devices after update:", devices.map(d => ({ id: d.id || d._id, telemetry: d.telemetry })));
+    if (devices && __DEV__) {
+      console.log("[CTX] Devices state:", devices.map(d => ({ 
+        id: d.id || d._id, 
+        _id: d._id,
+        name: d.name,
+        status: d.status,
+        hasTelemetry: !!d.telemetry,
+        telemetryKeys: d.telemetry ? Object.keys(d.telemetry) : []
+      })));
     }
   }, [devices]);
+
 
   return (
     <AuthContext.Provider
@@ -452,6 +763,7 @@ const connectWebSocket = (token) => {
         widgets,
         setWidgets,
         addDevice,
+        updateDevice,
         deleteDevice,
         fetchDevices,
         handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
@@ -462,8 +774,9 @@ const connectWebSocket = (token) => {
         signup,
         logout,
         isDarkTheme,
-        setIsDarkTheme,
+        toggleTheme, // Use the new function
         loading,
+        isRefreshing,
         lastUpdated,
         wsRef,
       }}

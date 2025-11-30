@@ -11,7 +11,7 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context"; // Correct import
 import { useAuth } from "../context/AuthContext";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,14 +33,7 @@ export default function LoginScreen() {
     }
     setLoading(true);
     try {
-      await login(identifier.trim(), password, navigation);
-      // navigation logic is handled inside AuthContext (no need to manually navigate here)
-      // If you want to navigate here instead, call:
-      // navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });
-      const success = await login(identifier.trim(), password);
-      if (success) {
-        // Navigation is handled by the RootNavigator automatically when userToken changes.
-      }
+      await login(identifier.trim(), password);
     } finally {
       setLoading(false);
     }

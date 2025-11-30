@@ -1,51 +1,132 @@
-import React, { useEffect, useRef } from "react";
-import { View, Text, StyleSheet, Animated } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated } from 'react-native';
+import { Power, Activity, AlertCircle } from 'lucide-react-native'; // Lucide icons
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons'; // Fallback for custom icon names
+
+// Fallback color object if @/constants/colors is missing
+const Colors = {
+  white: '#FFFFFF',
+};
 
 export default function IndicatorWidget({ title, value, telemetry, icon }) {
+  // --- Logic from Input 2: Animation ---
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
+  // --- Logic from Input 2: Data Handling ---
+  // Prioritize telemetry (real-time data) over static value
+  const displayValue = telemetry !== undefined ? telemetry : value;
+
+  // Normalize data to determine state (handles "on", "1", 1, true)
+  const isActive =
+    String(displayValue).toLowerCase() === 'on' ||
+    String(displayValue) === '1' ||
+    displayValue === true;
+
+  // Trigger animation when data changes
   useEffect(() => {
     Animated.sequence([
-      Animated.timing(pulseAnim, { toValue: 1.2, duration: 150, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1.05, duration: 150, useNativeDriver: true }),
       Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
-  }, [value, telemetry]); // animate on value or telemetry change
+  }, [displayValue]);
 
-  const displayValue = telemetry !== undefined ? telemetry : value;
-  const isActive =
-    displayValue?.toString().toLowerCase() === "on" || displayValue === "1" || displayValue === true;
+  // --- Visual Logic ---
+  const getGradientColors = () => {
+    if (isActive) return ['#10b981', '#059669']; // Emerald Green (ON)
+    return ['#ef4444', '#b91c1c']; // Red (OFF)
+  };
+
+  const renderIcon = () => {
+    // If a specific icon string is passed (e.g., from a database), try to render Ionicon
+    if (typeof icon === 'string') {
+      return <Ionicons name={icon} size={24} color={Colors.white} />;
+    }
+    // Default Lucide icons based on state
+    return isActive ? (
+      <Power size={24} color={Colors.white} />
+    ) : (
+      <Power size={24} color={Colors.white} style={{ opacity: 0.8 }} />
+    );
+  };
 
   return (
-    <Animated.View style={[styles.card, { transform: [{ scale: pulseAnim }] }]}>
-      <Ionicons
-        name={icon || "power-outline"}
-        size={32}
-        color={isActive ? "#34C759" : "#FF3B30"}
-      />
-      <Text style={styles.title}>{title}</Text>
-      <Text style={[styles.status, { color: isActive ? "#34C759" : "#FF3B30" }]}>
-        {isActive ? "ON" : "OFF"}
-      </Text>
+    <Animated.View style={[styles.wrapper, { transform: [{ scale: pulseAnim }] }]}>
+      <LinearGradient
+        colors={getGradientColors()}
+        style={styles.container}
+      >
+        {/* Header with Icon */}
+        <View style={styles.header}>
+          <View style={styles.iconContainer}>
+            {renderIcon()}
+          </View>
+        </View>
+
+        {/* Content */}
+        <View>
+          <Text style={styles.title} numberOfLines={1}>
+            {title}
+          </Text>
+          
+          <Text style={styles.value} numberOfLines={1}>
+            {isActive ? "ON" : "OFF"}
+          </Text>
+
+          <Text style={styles.statusSubtext}>
+            {isActive ? "System Active" : "System Inactive"}
+          </Text>
+        </View>
+      </LinearGradient>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    width: 160,
-    height: 120,
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 4,
-    elevation: 3,
+  wrapper: {
     margin: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
-  title: { fontSize: 14, color: "#333", fontWeight: "600", marginTop: 8 },
-  status: { fontSize: 16, fontWeight: "bold", marginTop: 6 },
+  container: {
+    width: 160,
+    height: 140,
+    borderRadius: 20,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)', // Glassmorphism effect
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 14,
+    color: Colors.white,
+    opacity: 0.9,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  value: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: Colors.white,
+  },
+  statusSubtext: {
+    fontSize: 11,
+    color: Colors.white,
+    opacity: 0.8,
+    fontWeight: '500',
+    marginTop: 2,
+  },
 });

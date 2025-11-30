@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BASE_URL } from "../screens/config";
+import { BASE_URL } from "../constants/config";
 
 const SHOULD_LOG = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_API_LOGS === "true";
 const debugLog = (...args) => {

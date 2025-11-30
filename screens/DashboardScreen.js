@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useContext, useState, useMemo } from "react";
 import {
   View,
@@ -17,17 +18,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import axios from "axios";
 import { AuthContext } from "../context/AuthContext";
-import { API_BASE } from "../screens/config";
+import { API_BASE } from "../constants/config";
 
 // 🧩 Widget components
-import CardWidget from "./CardWidget";
-import GaugeWidget from "./GaugeWidget";
-import IndicatorWidget from "./IndicatorWidget";
-import LEDControlWidget from "./LEDControlWidget";
+import CardWidget from "../components/CardWidget";
+import GaugeWidget from "../components/GaugeWidget";
+import IndicatorWidget from "../components/IndicatorWidget";
+import LEDControlWidget from "../components/LEDControlWidget";
+import { showToast } from "../components/Toast";
+import { formatDate } from "../utils/format";
 
 export default function DashboardScreen({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { userToken, logout, wsRef, widgets, setWidgets, devices } =
+  const { userToken, logout, wsRef, widgets, setWidgets, devices, isDarkTheme } =
     useContext(AuthContext);
 
   const [loading, setLoading] = useState(true);
@@ -39,6 +42,26 @@ export default function DashboardScreen({ route, navigation }) {
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [ledLabel, setLedLabel] = useState("");
   const [creatingLed, setCreatingLed] = useState(false);
+
+  // Theme-based styles
+  const themeStyles = {
+    gradient: isDarkTheme ? ["#0f2027", "#203a43", "#2c5364"] : ["#e6f3ff", "#ffffff"],
+    header: {
+      backgroundColor: isDarkTheme ? "rgba(0,0,0,0.3)" : "#ffffffcc",
+    },
+    title: { color: isDarkTheme ? "#FFFFFF" : "#111" },
+    subtitle: { color: isDarkTheme ? "#CCCCCC" : "#555" },
+    modalCard: {
+      backgroundColor: isDarkTheme ? "#2C2C2C" : "#fff",
+    },
+    modalTitle: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
+    modalSubtitle: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
+    modalLabel: { color: isDarkTheme ? "#E0E0E0" : "#1f2937" },
+    deviceRow: { backgroundColor: isDarkTheme ? "#1E1E1E" : "#f8fafc" },
+    deviceName: { color: isDarkTheme ? "#FFFFFF" : "#0f172a" },
+    deviceToken: { color: isDarkTheme ? "#A0A0A0" : "#475569" },
+    input: { color: isDarkTheme ? "#FFFFFF" : "#111827", borderColor: isDarkTheme ? "#444" : "#cbd5f5" },
+  };
 
   // 🧹 Delete dashboard
   const handleDeleteDashboard = () => {
@@ -52,12 +75,12 @@ export default function DashboardScreen({ route, navigation }) {
             await axios.delete(`${API_BASE}/dashboards/${dashboard._id}`, {
               headers: { Authorization: `Bearer ${userToken}` },
             });
-            Alert.alert("Deleted", "Dashboard removed successfully");
+            showToast.success("Dashboard removed successfully");
             navigation.goBack();
           } catch (err) {
             console.error("❌ Delete dashboard error:", err);
             if (err.response?.status === 401) logout();
-            Alert.alert("Error", "Failed to delete dashboard");
+            showToast.error("Failed to delete dashboard");
           }
         },
       },
@@ -82,10 +105,10 @@ export default function DashboardScreen({ route, navigation }) {
   };
 
   // 📦 Fetch widgets
-  const fetchWidgets = async () => {
+  const fetchWidgets = useCallback(async () => {
     if (isFetchingRef.current || !userToken || !dashboard?._id) return;
     isFetchingRef.current = true;
-
+  
     try {
       if (!refreshing) setLoading(true);
       console.log("📡 Fetching widgets for dashboard:", dashboard._id);
@@ -94,7 +117,7 @@ export default function DashboardScreen({ route, navigation }) {
       const res = await axios.get(`${API_BASE}/widgets/${dashboard._id}`, {
         headers: { Authorization: `Bearer ${userToken}` },
       });
-
+  
       const fetched =
         Array.isArray(res.data) ? res.data : res.data.widgets || [];
 
@@ -102,7 +125,7 @@ export default function DashboardScreen({ route, navigation }) {
         console.error("❌ Invalid widgets format from API:", res.data);
         return;
       }
-
+  
       const processed = fetched
         .map((w, i) => {
           const id = w._id?.toString?.() || `temp-${dashboard._id}-${i}`;
@@ -127,7 +150,7 @@ export default function DashboardScreen({ route, navigation }) {
           };
         })
         .filter((w) => w.type !== "led" || w.device_token);
-
+  
       if (mountedRef.current) {
         console.log("✅ Widgets loaded:", processed.length);
         setWidgets(processed);
@@ -147,7 +170,7 @@ export default function DashboardScreen({ route, navigation }) {
     } catch (err) {
       console.error("❌ Fetch widgets error:", err);
       if (err.response?.status === 401) logout();
-      Alert.alert("Error", "Failed to load widgets.");
+      showToast.error("Failed to load widgets.");
     } finally {
       isFetchingRef.current = false;
       if (mountedRef.current) {
@@ -155,12 +178,12 @@ export default function DashboardScreen({ route, navigation }) {
         setRefreshing(false);
       }
     }
-  };
+  }, [userToken, dashboard?._id, refreshing, setWidgets, mountedRef, isFetchingRef, logout]);
 
   // 📡 WebSocket listener for telemetry + widget updates
   useEffect(() => {
     if (!wsRef?.current || !dashboard?._id) return;
-
+  
     const handleWSMessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
@@ -248,16 +271,14 @@ export default function DashboardScreen({ route, navigation }) {
     const socket = wsRef.current;
     socket.addEventListener("message", handleWSMessage);
     return () => socket.removeEventListener("message", handleWSMessage);
-  }, [dashboard?._id, wsRef, setWidgets]);
-
-  // 🧭 Fetch widgets on mount
+  }, [dashboard?._id, wsRef, setWidgets]); // Dependencies are correct here
+  
+  // 🧭 Fetch widgets on mount and when focused
   useEffect(() => {
     mountedRef.current = true;
-    if (dashboard?._id) fetchWidgets();
-    return () => {
-      mountedRef.current = false;
-    };
-  }, [dashboard?._id, userToken]);
+    fetchWidgets(); // Initial fetch
+    return () => { mountedRef.current = false; };
+  }, [fetchWidgets]); // Now depends on the stable fetchWidgets function
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -306,7 +327,7 @@ export default function DashboardScreen({ route, navigation }) {
       if (response.data) {
         const newWidget = {
           ...response.data,
-          _id: response.data._id || response.data.id,
+          _id: response.data._id || response.data.id || `temp-led-${Date.now()}`,
           device_token: devices.find((d) => d._id === selectedDeviceId)?.device_token || null,
           virtual_pin: response.data.config?.virtual_pin,
         };
@@ -329,18 +350,18 @@ export default function DashboardScreen({ route, navigation }) {
         fetchWidgets();
       }, 500);
       
-      Alert.alert("✅ Success", "LED widget created successfully.");
+      showToast.success("LED widget created successfully.");
     } catch (err) {
       console.error("❌ Create LED widget error:", err);
       
       if (err.response?.status === 401) {
         logout();
-        Alert.alert("Session Expired", "Please login again.");
+        showToast.error("Session Expired", "Please login again.");
       } else if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
-        Alert.alert("Timeout", "Request took too long. Please check your connection.");
+        showToast.error("Timeout", "Request took too long. Please check your connection.");
       } else {
         const errorMessage = err.response?.data?.detail || err.message || "Failed to create LED widget";
-        Alert.alert("Error", errorMessage);
+        showToast.error("Error", errorMessage);
       }
     } finally {
       setCreatingLed(false);
@@ -375,11 +396,11 @@ export default function DashboardScreen({ route, navigation }) {
               headers: { Authorization: `Bearer ${userToken}` },
             });
             setWidgets((prev) => prev.filter((w) => String(w._id) !== String(widgetId)));
-            Alert.alert("Deleted", "Widget deleted successfully");
+            showToast.success("Widget deleted successfully");
           } catch (err) {
             console.error("❌ Delete widget error:", err);
             if (err.response?.status === 401) logout();
-            Alert.alert("Error", "Failed to delete widget");
+            showToast.error("Failed to delete widget");
           }
         },
       },
@@ -447,7 +468,7 @@ export default function DashboardScreen({ route, navigation }) {
 
   if (loading) {
     return (
-      <LinearGradient colors={["#eef2f3", "#8e9eab"]} style={styles.container}>
+      <LinearGradient colors={themeStyles.gradient} style={styles.container}>
         <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
         <Text style={styles.loadingText}>Loading dashboard...</Text>
       </LinearGradient>
@@ -455,11 +476,11 @@ export default function DashboardScreen({ route, navigation }) {
   }
 
   return (
-    <LinearGradient colors={["#eef2f3", "#8e9eab"]} style={styles.container}>
-      <View style={styles.header}>
+    <LinearGradient colors={themeStyles.gradient} style={styles.container}>
+      <View style={[styles.header, themeStyles.header]}>
         <View>
-          <Text style={styles.title}>{dashboard?.name || "Dashboard"}</Text>
-          <Text style={styles.subtitle}>
+          <Text style={[styles.title, themeStyles.title]}>{dashboard?.name || "Dashboard"}</Text>
+          <Text style={[styles.subtitle, themeStyles.subtitle]}>
             {dashboard?.description || "Monitor your devices"}
           </Text>
         </View>
@@ -495,14 +516,14 @@ export default function DashboardScreen({ route, navigation }) {
               colors={["#007AFF"]}
             />
           }
-          ListEmptyComponent={
+          ListEmptyComponent={() => (
             <View style={styles.emptyContainer}>
               <Ionicons name="bulb-outline" size={50} color="#666" />
               <Text style={styles.placeholder}>
                 No widgets yet. Add one from the dashboard editor.
               </Text>
             </View>
-          }
+          )}
         />
       </Animated.View>
 
@@ -513,30 +534,30 @@ export default function DashboardScreen({ route, navigation }) {
         onRequestClose={() => setAddLedModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add LED Widget</Text>
-            <Text style={styles.modalSubtitle}>
+          <View style={[styles.modalCard, themeStyles.modalCard]}>
+            <Text style={[styles.modalTitle, themeStyles.modalTitle]}>Add LED Widget</Text>
+            <Text style={[styles.modalSubtitle, themeStyles.modalSubtitle]}>
               Choose a device to control its LED. Each widget gets a unique virtual pin automatically.
             </Text>
 
-            <Text style={styles.modalLabel}>Select Device</Text>
+            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Select Device</Text>
             <ScrollView style={styles.deviceList}>
               {availableDevices.map((device) => {
                 const isSelected = selectedDeviceId === device._id;
                 return (
                   <TouchableOpacity
                     key={device._id}
-                    style={[
+                    style={[styles.deviceRow, themeStyles.deviceRow,
                       styles.deviceRow,
                       isSelected && styles.deviceRowSelected,
                     ]}
                     onPress={() => setSelectedDeviceId(device._id)}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.deviceName}>
+                      <Text style={[styles.deviceName, themeStyles.deviceName]}>
                         {device.name || "Unnamed Device"}
                       </Text>
-                      <Text style={styles.deviceToken}>
+                      <Text style={[styles.deviceToken, themeStyles.deviceToken]}>
                         Token: {device.device_token}
                       </Text>
                     </View>
@@ -548,9 +569,9 @@ export default function DashboardScreen({ route, navigation }) {
               })}
             </ScrollView>
 
-            <Text style={styles.modalLabel}>Widget Label</Text>
+            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Widget Label</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, themeStyles.input]}
               placeholder="Living room LED"
               value={ledLabel}
               onChangeText={setLedLabel}

@@ -1,4 +1,4 @@
-import React, { useState, useContext, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect, useContext } from "react";
 import {
   View,
   Text,
@@ -20,7 +20,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { AuthContext } from "../context/AuthContext";
 import axios from "axios";
-import { BASE_URL } from "../screens/config";
+import Toast from "../components/Toast"; // 🟢 Import Toast
+import { BASE_URL } from "../constants/config";
+import { showToast } from "../components/Toast";
+import { formatDate } from "../utils/format";
 
 console.log("Backend:", BASE_URL);
 
@@ -29,9 +32,50 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// 🔹 Animated Card Component (Moved outside for better structure)
+const DashboardCard = React.memo(({ item, onPress }) => {
+  const scale = new Animated.Value(1);
+
+  const onPressIn = () =>
+    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
+  const onPressOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.9}
+        onPress={() => onPress(item)}
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+      >
+        <LinearGradient
+          colors={["#FF9A8B", "#FF6A88", "#FF99AC"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.gradientCard}
+        >
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>{item.name}</Text>
+            <Ionicons name="chevron-forward" size={22} color="#fff" />
+          </View>
+          <Text style={styles.cardSubtitle} numberOfLines={2}>
+            {item.description || "No description provided"}
+          </Text>
+          <Text style={styles.cardDate}>
+            Created: {formatDate(item.created_at)}
+          </Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+});
+
+
 export default function MainDashboardScreen() {
   // *** MAIN FIX: use userToken from context! ***
-  const { userToken } = useContext(AuthContext);
+  const { userToken, isDarkTheme } = useContext(AuthContext);
   const navigation = useNavigation();
 
   const [dashboards, setDashboards] = useState([]);
@@ -39,11 +83,27 @@ export default function MainDashboardScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [toast, setToast] = useState({ visible: false, message: "" });
+  
+
+  // Theme-based styles
+  const themeStyles = {
+    header: {
+      backgroundColor: isDarkTheme ? "#1F1F1F" : "#FF6347",
+    },
+    modalView: {
+      backgroundColor: isDarkTheme ? "#2C2C2C" : "#fff",
+    },
+    modalTitle: {
+      color: isDarkTheme ? "#FFFFFF" : "#222",
+    },
+    input: { color: isDarkTheme ? "#FFFFFF" : "#111", backgroundColor: isDarkTheme ? "#1E1E1E" : "#fafafa", borderColor: isDarkTheme ? "#444" : "#ddd" },
+  };
 
   // 🔹 Fetch dashboards
   const fetchDashboards = async () => {
     if (!userToken) {
-      Alert.alert("Not Logged In", "Please login again.");
+      showToast("Please login again.", "error");
       return;
     }
     try {
@@ -54,8 +114,8 @@ export default function MainDashboardScreen() {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setDashboards(res.data || []);
     } catch (err) {
-      console.error("Dashboard fetch error:", err);
-      Alert.alert("Error", "Could not load dashboards. Please try again.");
+      console.error("Dashboard fetch error:", err.response?.data || err.message);
+      showToast("Could not load dashboards.", "error");
     } finally {
       setLoading(false);
     }
@@ -72,11 +132,11 @@ export default function MainDashboardScreen() {
   // 🔹 Add new dashboard
   const addDashboard = async () => {
     if (!newName.trim()) {
-      Alert.alert("Error", "Please enter a dashboard name");
+      showToast("Please enter a dashboard name.", "error");
       return;
     }
     if (!userToken) {
-      Alert.alert("Not Logged In", "Cannot add dashboard—please login again.");
+      showToast("Cannot add dashboard. Please login again.", "error");
       return;
     }
     try {
@@ -90,14 +150,15 @@ export default function MainDashboardScreen() {
       setModalVisible(false);
       setNewName("");
       setNewDescription("");
+      showToast("Dashboard created!", "success");
     } catch (err) {
       // Backend may have more info in err.response?.data?.detail
       let msg = "Failed to create dashboard.";
       if (err.response && err.response.data && err.response.data.detail) {
         msg = err.response.data.detail;
       }
-      console.error("Add dashboard error:", err);
-      Alert.alert("Error", msg);
+      console.error("Add dashboard error:", err.response?.data || err.message);
+      showToast(msg, "error");
     }
   };
 
@@ -106,52 +167,23 @@ export default function MainDashboardScreen() {
     navigation.navigate("Dashboard", { dashboard });
   };
 
-  // 🔹 Animated Card Component
-  const DashboardCard = ({ item }) => {
-    const scale = new Animated.Value(1);
-
-    const onPressIn = () =>
-      Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
-    const onPressOut = () =>
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
-
-    return (
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <TouchableOpacity
-          style={styles.card}
-          activeOpacity={0.9}
-          onPress={() => openDashboard(item)}
-          onPressIn={onPressIn}
-          onPressOut={onPressOut}
-        >
-          <LinearGradient
-            colors={["#FF9A8B", "#FF6A88", "#FF99AC"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.gradientCard}
-          >
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Ionicons name="chevron-forward" size={22} color="#fff" />
-            </View>
-            <Text style={styles.cardSubtitle}>
-              {item.description || "No description provided"}
-            </Text>
-            <Text style={styles.cardDate}>
-              Created: {new Date(item.created_at).toLocaleString()}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
-
- return (
-  <View style={styles.container}>
+  return (
+    <LinearGradient
+      colors={
+        isDarkTheme
+          ? ["#0f2027", "#203a43", "#2c5364"]
+          : ["#e6f3ff", "#ffffff"]
+      }
+      style={styles.container}>
     {/* 🌈 Gradient Header */}
-    <LinearGradient colors={["#FF6347", "#FF8264"]} style={styles.header}>
+    <LinearGradient colors={isDarkTheme ? ["#2C5364", "#203A43", "#0F2027"] : ["#FF6347", "#FF8264"]} style={styles.header}>
       <Text style={styles.title}>My Dashboards</Text>
       <TouchableOpacity onPress={() => setModalVisible(true)}>
+
+
+
+
+        
         <Ionicons name="add-circle" size={36} color="#fff" />
       </TouchableOpacity>
     </LinearGradient>
@@ -166,49 +198,40 @@ export default function MainDashboardScreen() {
     ) : (
       <FlatList
         data={dashboards}
-        keyExtractor={(item, index) =>
-          item?._id?.toString?.() ||
-          item?.id?.toString?.() ||
-          `dashboard-${index}`
-        }
-        renderItem={({ item, index }) => (
-          <DashboardCard
-            key={item?._id || item?.id || `dashboard-${index}`}
-            item={item}
-          />
-        )}
+        keyExtractor={(item) => item._id || item.id || item.name}
+        renderItem={({ item }) => <DashboardCard item={item} onPress={openDashboard} />}
         contentContainerStyle={{ padding: 16 }}
-        ListEmptyComponent={
+        ListEmptyComponent={() => (
           <Text
             style={{
               textAlign: "center",
               marginTop: 40,
-              color: "#999",
+              color: isDarkTheme ? "#999" : "#666",
               fontSize: 16,
             }}
           >
             No dashboards yet. Tap + to add one.
           </Text>
-        }
+        )}
       />
     )}
 
     {/* 🪟 Create Dashboard Modal */}
     <Modal visible={modalVisible} transparent animationType="fade">
       <View style={styles.modalOverlay}>
-        <Animated.View style={styles.modalView}>
-          <Text style={styles.modalTitle}>Create Dashboard</Text>
+        <Animated.View style={[styles.modalView, themeStyles.modalView]}>
+          <Text style={[styles.modalTitle, themeStyles.modalTitle]}>Create Dashboard</Text>
 
           {/* 📝 Inputs */}
           <TextInput
-            style={styles.input}
+            style={[styles.input, themeStyles.input]}
             placeholder="Dashboard Name"
             placeholderTextColor="#888"
             value={newName}
             onChangeText={setNewName}
           />
           <TextInput
-            style={[styles.input, { height: 80 }]}
+            style={[styles.input, { height: 80 }, themeStyles.input]}
             placeholder="Description (optional)"
             placeholderTextColor="#888"
             value={newDescription}
@@ -237,14 +260,20 @@ export default function MainDashboardScreen() {
         </Animated.View>
       </View>
     </Modal>
-  </View>
-);
 
+    <Toast
+        visible={toast.visible}
+        message={toast.message}
+        type={toast.type}
+        onHide={() => setToast({ ...toast, visible: false })}
+    />
+    </LinearGradient>
+  );
 }
 
 // 💅 STYLES
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" ,marginBottom:50 },
+  container: { flex: 1, marginBottom: 50 },
 
   header: {
     paddingTop: 60,
