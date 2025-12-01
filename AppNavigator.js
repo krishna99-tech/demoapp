@@ -13,7 +13,6 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { COLORS } from "./theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./context/AuthContext";
-import "./debug-text-patch"; // Ensure debug patch is applied
 
 // Screens
 import LoginScreen from "./screens/LoginScreen";
@@ -142,7 +141,7 @@ function AppStack() {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal' }} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
-    </Stack.Navigator> 
+    </Stack.Navigator>
   );
 }
 
@@ -168,7 +167,7 @@ export default function RootNavigator() {
           fontWeight: 'bold',
         },
         headerShadowVisible: false, // Hides the shadow/border under the header
-       }}>
+       }} >
         {userToken ? (
           <>
             <Stack.Screen name="App" component={AppStack} options={{ headerShown: false }}/>

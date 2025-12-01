@@ -9,7 +9,7 @@ const Colors = {
   white: '#FFFFFF',
 };
 
-export default function GaugeWidget({ title, value, telemetry, icon }) {
+const GaugeWidget = ({ title, value, telemetry, icon }) => {
   // --- Logic from Input 2: Animation ---
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
@@ -66,7 +66,10 @@ export default function GaugeWidget({ title, value, telemetry, icon }) {
       </LinearGradient>
     </Animated.View>
   );
-}
+};
+
+// Wrap in React.memo to prevent unnecessary re-renders
+export default React.memo(GaugeWidget);
 
 const styles = StyleSheet.create({
   // Wrapper handles the external layout and animation spacing

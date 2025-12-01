@@ -33,7 +33,7 @@ const Colors = {
   darkGray: "#1F2937",
 };
 
-export default function LEDControlWidget({
+const LEDControlWidget = ({
   title,
   widgetId,
   deviceId,
@@ -44,7 +44,7 @@ export default function LEDControlWidget({
   onLongPress,
   onDelete,
   onStateChange,
-}) {
+}) => {
   // --- LOGIC FROM INPUT 2 ---
   const isUpdatingFromWS = useRef(false);
   const [ledOn, setLedOn] = useState(() => (initialState ? 1 : 0));
@@ -558,7 +558,9 @@ export default function LEDControlWidget({
       </Modal>
     </>
   );
-}
+};
+
+export default React.memo(LEDControlWidget);
 
 const styles = StyleSheet.create({
   // --- Main Widget Styles (Based on Input 1) ---

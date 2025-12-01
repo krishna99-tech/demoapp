@@ -9,7 +9,7 @@ const Colors = {
   white: '#FFFFFF',
 };
 
-export default function IndicatorWidget({ title, value, telemetry, icon }) {
+const IndicatorWidget = ({ title, value, telemetry, icon }) => {
   // --- Logic from Input 2: Animation ---
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -80,7 +80,10 @@ export default function IndicatorWidget({ title, value, telemetry, icon }) {
       </LinearGradient>
     </Animated.View>
   );
-}
+};
+
+// Wrap in React.memo to prevent unnecessary re-renders
+export default React.memo(IndicatorWidget);
 
 const styles = StyleSheet.create({
   wrapper: {

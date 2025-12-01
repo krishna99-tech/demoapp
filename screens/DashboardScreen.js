@@ -447,7 +447,7 @@ export default function DashboardScreen({ route, navigation }) {
         );
         break;
       default:
-        component = <CardWidget {...commonProps} />;
+        component = <CardWidget {...commonProps} isDarkTheme={isDarkTheme} />;
         break;
     }
 

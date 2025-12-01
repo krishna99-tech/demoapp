@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useCallback,
 } from "react";
+import { View, ActivityIndicator } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert } from "react-native";
 import { BASE_URL, WS_URL } from "../constants/config";
@@ -191,7 +192,7 @@ export const AuthProvider = ({ children }) => {
   // ====================================
   // ⚙️ DEVICES
   // ====================================
-  const fetchDevices = async (token = userToken) => {
+  const fetchDevices = useCallback(async (token = userToken) => {
     setIsRefreshing(true);
     try {
       const data = await API.getDevices();
@@ -254,7 +255,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setIsRefreshing(false);
     };
-  };
+  }, [userToken]);
 
   const addDevice = async (deviceData) => {
     try {
@@ -656,8 +657,12 @@ export const AuthProvider = ({ children }) => {
   // ====================================
 // ⚡ WEBSOCKET CONNECTION
 // ====================================
-const connectWebSocket = (token) => {
-  if (!token) return;
+const connectWebSocket = (token) => {  
+  // Ensure token is a non-empty string before connecting
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    console.warn("[WS] Connection attempt aborted: Invalid or empty token.");
+    return;
+  }
   isReconnecting.current = true; // Allow reconnection for this session
 
   // Avoid duplicate connections
@@ -669,7 +674,7 @@ const connectWebSocket = (token) => {
   const ws = new WebSocket(`${WS_URL}?token=${token}`);
   wsRef.current = ws;
 
-  let pingInterval; // Moved here to be accessible in all ws event handlers
+  let pingInterval = null; // Initialize to null
 
   // ✅ Connection opened
   ws.onopen = () => {
@@ -715,7 +720,7 @@ const connectWebSocket = (token) => {
   // ✅ Handle close (auto reconnect)
   ws.onclose = (e) => {
     console.warn("⚠️ WS closed:", e.code, e.reason);
-    clearInterval(pingInterval);
+    if (pingInterval) clearInterval(pingInterval);
 
     // Do not reconnect if it was an intentional closure (e.g., logout)
     // We use code 4000 in the logout function for this purpose.
@@ -732,7 +737,7 @@ const connectWebSocket = (token) => {
   // ✅ Handle errors
   ws.onerror = (err) => {
     console.error("❌ WS error:", err.message || err);
-    clearInterval(pingInterval);
+    if (pingInterval) clearInterval(pingInterval);
     ws.close();
   };
 };
@@ -752,6 +757,16 @@ const connectWebSocket = (token) => {
       })));
     }
   }, [devices]);
+
+  // While the app is restoring the session from storage, show a loading screen.
+  // This prevents the rest of the app from rendering with incomplete auth data.
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
 
   return (

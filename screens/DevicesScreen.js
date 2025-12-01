@@ -22,7 +22,8 @@ import {
   Plus,
 } from "lucide-react-native";
 import { showToast } from "../components/Toast";
-import DeviceList from "./DeviceList";
+import { DeviceList } from "../components/DeviceList";
+
 
 const CARD_PADDING = 16;
 
@@ -30,8 +31,8 @@ export default function DevicesScreen({ navigation }) {
   const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices } = useContext(AuthContext);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
-
-  const [refreshing, setRefreshing] = useState(false);
+  
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [addDeviceModalVisible, setAddDeviceModalVisible] = useState(false);
   const [newDeviceName, setNewDeviceName] = useState("");
   const [newDeviceType, setNewDeviceType] = useState("");
@@ -81,14 +82,14 @@ export default function DevicesScreen({ navigation }) {
   ], [devices]);
 
   const onRefresh = useCallback(async () => {
-    setRefreshing(true);
+    setIsRefreshing(true);
     try {
       await fetchDevices();
     } catch (error) {
       console.error("Failed to refresh devices:", error);
       showToast.error("Refresh Failed", "Could not update the device list.");
     }
-    setRefreshing(false);
+    setIsRefreshing(false);
   }, [fetchDevices]);
 
   const handleAddDevice = async () => {
@@ -254,16 +255,17 @@ export default function DevicesScreen({ navigation }) {
         </ScrollView>
       </LinearGradient>
 
-      <DeviceList
-        devices={filteredDevices}
-        isDarkTheme={isDarkTheme}
-        onEdit={handleOpenEditModal}
-        onDelete={handleDeleteDevice}
-        onPress={(device) => navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        Colors={Colors}
-      />
+<DeviceList
+  devices={filteredDevices}
+  isDarkTheme={isDarkTheme}
+  onEdit={handleOpenEditModal}
+  onDelete={handleDeleteDevice}
+  onPress={(device) => navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })}
+  refreshing={isRefreshing}      // ✅ CORRECT
+  onRefresh={onRefresh}
+  Colors={Colors}
+/>
+
 
       {/* Add Device FAB */}
       <TouchableOpacity

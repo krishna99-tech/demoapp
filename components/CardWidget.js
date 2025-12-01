@@ -2,7 +2,6 @@ import React, { useContext } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Activity, Thermometer, Droplets, Wind, Lightbulb, Flame, Zap } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AuthContext } from '../context/AuthContext';
 
 const getIcon = (iconName, size, color) => {
   switch (iconName) {
@@ -25,9 +24,7 @@ const getIcon = (iconName, size, color) => {
   }
 };
 
-export default function CardWidget({ title, value, telemetry, icon }) {
-  const { isDarkTheme } = useContext(AuthContext);
-
+const CardWidget = ({ title, value, telemetry, icon, isDarkTheme }) => {
   const Colors = {
     primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
     primaryDark: isDarkTheme ? "#00B5D4" : "#2563EB",
@@ -52,7 +49,10 @@ export default function CardWidget({ title, value, telemetry, icon }) {
       </Text>
     </LinearGradient>
   );
-}
+};
+
+// Wrap in React.memo to prevent unnecessary re-renders
+export default React.memo(CardWidget);
 
 const styles = StyleSheet.create({
   container: {
