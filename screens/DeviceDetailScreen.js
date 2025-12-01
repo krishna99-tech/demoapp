@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ScrollView,
   RefreshControl,
   Platform,
@@ -14,6 +13,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { AuthContext } from "../context/AuthContext";
+import CustomAlert from "../components/CustomAlert";
 import { API_BASE } from "../constants/config";
 import { showToast } from "../components/Toast";
 import { formatDate } from "../utils/format";
@@ -85,7 +85,7 @@ function getTimeSince(date) {
 
 export default function DeviceDetailScreen({ route, navigation }) {
   const { deviceId } = route.params;
-  const { devices, deleteDevice, fetchTelemetry, userToken, logout } = useContext(AuthContext);
+  const { devices, deleteDevice, fetchTelemetry, userToken, logout, isDarkTheme, showAlert } = useContext(AuthContext);
 
   // State for modals
   const [widgetModalVisible, setWidgetModalVisible] = useState(false);
@@ -95,6 +95,9 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [selectedWidgetType, setSelectedWidgetType] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   const device = devices.find((d) => String(d.id || d._id) === String(deviceId));
 
@@ -145,26 +148,36 @@ export default function DeviceDetailScreen({ route, navigation }) {
   }
 
   const handleDeleteDevice = () => {
-    Alert.alert("Delete Device", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await deleteDevice(device.id || device._id);
-          navigation.goBack();
+    setAlertConfig({
+      type: 'confirm',
+      title: "Delete Device",
+      message: "Are you sure?",
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setAlertVisible(false);
+            await deleteDevice(device.id || device._id);
+            navigation.goBack();
+          },
         },
-      },
-    ]);
+      ]
+    });
+    setAlertVisible(true);
   };
 
   const handleRefresh = () => {
     if (!device?.device_token) return;
     setRefreshing(true);
     fetchTelemetry(device.device_token)
-      .catch((err) => {
+      .catch(() => {
         console.error("Failed to refresh telemetry:", err);
-        Alert.alert("Refresh Failed", "Could not fetch latest device data.");
+        setAlertConfig({
+          type: 'error', title: "Refresh Failed", message: "Could not fetch latest device data.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       })
       .finally(() => {
         setRefreshing(false);
@@ -178,7 +191,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
   const fetchDashboards = async () => {
     if (!userToken) {
-      Alert.alert("Session expired", "Please login again.");
+      setAlertConfig({
+        type: 'error', title: "Session expired", message: "Please login again.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+      });
+      setAlertVisible(true);
       return;
     }
     try {
@@ -188,7 +204,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
       setDashboards(res.data);
     } catch (err) {
       console.error(err);
-      Alert.alert("Error", "Could not load dashboards");
+      setAlertConfig({
+        type: 'error', title: "Error", message: "Could not load dashboards", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+      });
+      setAlertVisible(true);
     }
   };
 
@@ -201,7 +220,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
   const exportToDashboard = async (dashboardId) => {
     if (!userToken || !selectedSensor || !selectedWidgetType) {
-      Alert.alert("Error", "Missing required information.");
+      setAlertConfig({
+        type: 'error', title: "Error", message: "Missing required information.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+      });
+      setAlertVisible(true);
       return;
     }
 
@@ -239,13 +261,21 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
       if (err.response?.status === 401) {
         logout();
-        Alert.alert("Session Expired", "Please login again.");
+        showAlert({
+          type: 'error', title: "Session Expired", message: "Please login again.", buttons: [{ text: "OK" }]
+        });
       } else if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
-        Alert.alert("Timeout", "Request took too long. Please check your connection.");
+        setAlertConfig({
+          type: 'error', title: "Timeout", message: "Request took too long. Please check your connection.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       } else {
         const errorMessage =
           err.response?.data?.detail || err.message || "Failed to export telemetry";
-        Alert.alert("Error", errorMessage);
+        setAlertConfig({
+          type: 'error', title: "Error", message: errorMessage, buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+        });
+        setAlertVisible(true);
       }
     } finally {
       setIsSubmitting(false);
@@ -434,6 +464,13 @@ export default function DeviceDetailScreen({ route, navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Local Custom Alert */}
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </View>
   );
 }

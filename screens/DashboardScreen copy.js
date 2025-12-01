@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useContext, useState, useMemo, useCallback } from "react";
+
+import React, { useEffect, useRef, useContext, useState, useMemo,useCallback } from "react";
 import {
   View,
   Text,
@@ -30,7 +31,9 @@ import { formatDate } from "../utils/format";
 
 export default function DashboardScreen({ route, navigation }) {
   const { dashboard } = route.params || {};
-  const { userToken, logout, wsRef, devices, isDarkTheme } = useContext(AuthContext);
+  const { userToken, logout, wsRef, devices, isDarkTheme } =
+  const { userToken, logout, wsRef, devices, isDarkTheme, showAlert } =
+    useContext(AuthContext);
 
   const [loading, setLoading] = useState(true);
   const [widgets, setWidgets] = useState([]); // Use local state for widgets
@@ -68,6 +71,23 @@ export default function DashboardScreen({ route, navigation }) {
 
   // 🧹 Delete dashboard
   const handleDeleteDashboard = () => {
+    Alert.alert("Delete Dashboard", "Delete this dashboard?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await axios.delete(`${API_BASE}/dashboards/${dashboard._id}`, {
+              headers: { Authorization: `Bearer ${userToken}` },
+            });
+            showToast.success("Dashboard removed successfully");
+            navigation.goBack();
+          } catch (err) {
+            console.error("❌ Delete dashboard error:", err);
+            if (err.response?.status === 401) logout();
+            showToast.error("Failed to delete dashboard");
+          }
     setAlertConfig({
       type: 'confirm',
       title: "Delete Dashboard",
@@ -80,12 +100,9 @@ export default function DashboardScreen({ route, navigation }) {
           onPress: async () => {
             setAlertVisible(false);
             try {
-              await axios.delete(
-                `${API_BASE}/dashboards/${dashboard._id}`,
-                {
-                  headers: { Authorization: `Bearer ${userToken}` },
-                }
-              );
+              await axios.delete(`${API_BASE}/dashboards/${dashboard._id}`, {
+                headers: { Authorization: `Bearer ${userToken}` },
+              });
               showToast.success("Dashboard removed successfully");
               navigation.goBack();
             } catch (err) {
@@ -95,8 +112,9 @@ export default function DashboardScreen({ route, navigation }) {
             }
           },
         },
-      ],
-    });
+      },
+    ]);
+      ]});
     setAlertVisible(true);
   };
 
@@ -236,38 +254,43 @@ export default function DashboardScreen({ route, navigation }) {
         } else if (msg.type === "telemetry_update" && msg.device_id) {
           setWidgets((prev) =>
             prev.map((w) => {
-              // Only process widgets that belong to the device in the message
-              if (String(w.device_id) !== String(msg.device_id)) {
-                return w;
-              }
-
-              // Create a mutable copy to apply updates
-              let updatedWidget = { ...w };
-              let hasUpdate = false;
-
-              // Handle LED widgets with virtual pins
-              if (w.type === "led" && w.virtual_pin) {
-                const virtualPinKey = w.virtual_pin.toLowerCase();
-                if (msg.data && msg.data[virtualPinKey] !== undefined) {
-                  const newValue = msg.data[virtualPinKey] ? 1 : 0;
-                  if (newValue !== (w.value ? 1 : 0)) {
-                    updatedWidget.value = newValue;
-                    hasUpdate = true;
+              const wDeviceId = w.device_id;
+              const msgDeviceId = msg.device_id;
+              // Match device IDs using robust String check
+              if (String(wDeviceId) === String(msgDeviceId)) {
+                // Handle LED widgets with virtual pins - strict virtual pin matching
+                if (w.type === "led" && w.virtual_pin) {
+                  const virtualPinKey = w.virtual_pin.toLowerCase();
+                  // Only update if this specific virtual pin is in the data
+                  if (msg.data && msg.data[virtualPinKey] !== undefined) {
+                    const newValue = msg.data[virtualPinKey];
+                    const currentValue = w.value ? 1 : 0;
+                    // Only update if value actually changed to prevent flickering
+                    if (newValue !== currentValue) {
+                      console.log(`📊 Dashboard: Updating LED widget ${w._id} (${virtualPinKey}) to ${newValue ? "ON" : "OFF"}`);
+                      return {
+                        ...w,
+                        value: newValue ? 1 : 0,
+                      };
+                    }
+                  }
+                  // Don't update if virtual pin doesn't match
+                  return w;
+                }
+                // Handle other widgets with config keys
+                else {
+                  const key = w.config?.key;
+                  if (key && msg.data && key in msg.data) {
+                    const newValue = msg.data[key];
+                    return {
+                      ...w,
+                      value: newValue,
+                      telemetry: { ...w.telemetry, [key]: newValue },
+                    };
                   }
                 }
-              } 
-              // Handle other widgets with a 'key' in their config
-              else if (w.config?.key && msg.data && w.config.key in msg.data) {
-                const key = w.config.key;
-                const newValue = msg.data[key];
-                if (newValue !== w.value) {
-                  updatedWidget.value = newValue;
-                  updatedWidget.telemetry = { ...w.telemetry, [key]: newValue };
-                  hasUpdate = true;
-                }
               }
-
-              return hasUpdate ? updatedWidget : w;
+              return w;
             })
           );
         }
@@ -279,14 +302,14 @@ export default function DashboardScreen({ route, navigation }) {
     const socket = wsRef.current;
     socket.addEventListener("message", handleWSMessage);
     return () => socket.removeEventListener("message", handleWSMessage);
-  }, [dashboard?._id, wsRef, setWidgets]);
+  }, [dashboard?._id, wsRef, setWidgets]); // Dependencies are correct here
   
   // 🧭 Fetch widgets on mount and when focused
   useEffect(() => {
     mountedRef.current = true;
     fetchWidgets(); // Initial fetch
     return () => { mountedRef.current = false; };
-  }, [fetchWidgets]);
+  }, [fetchWidgets]); // Now depends on the stable fetchWidgets function
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -295,11 +318,9 @@ export default function DashboardScreen({ route, navigation }) {
 
   const handleOpenAddLed = () => {
     if (!devices || devices.length === 0) {
+      Alert.alert("No devices", "Add a device first before creating LED widgets.");
       setAlertConfig({
-        type: 'warning', 
-        title: "No devices", 
-        message: "Add a device first before creating LED widgets.", 
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+        type: 'warning', title: "No devices", message: "Add a device first before creating LED widgets.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
       });
       setAlertVisible(true);
       return;
@@ -311,11 +332,9 @@ export default function DashboardScreen({ route, navigation }) {
 
   const handleCreateLedWidget = async () => {
     if (!selectedDeviceId) {
+      Alert.alert("Select a device", "Please choose a device for the LED widget.");
       setAlertConfig({
-        type: 'warning', 
-        title: "Select a device", 
-        message: "Please choose a device for the LED widget.", 
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
+        type: 'warning', title: "Select a device", message: "Please choose a device for the LED widget.", buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
       });
       setAlertVisible(true);
       return;
@@ -403,8 +422,14 @@ export default function DashboardScreen({ route, navigation }) {
     }
   }, [addLedModalVisible, availableDevices, selectedDeviceId]);
 
-  // 🗑️ Delete widget - FIXED
+  // 🗑️ Delete widget
   const handleDeleteWidget = (widgetId) => {
+    Alert.alert("Delete Widget", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
     setAlertConfig({
       type: 'confirm',
       title: "Delete Widget",
@@ -429,7 +454,7 @@ export default function DashboardScreen({ route, navigation }) {
             }
           },
         },
-      ],
+      ]
     });
     setAlertVisible(true);
   };
@@ -589,9 +614,8 @@ export default function DashboardScreen({ route, navigation }) {
                 return (
                   <TouchableOpacity
                     key={device._id}
-                    style={[
+                    style={[styles.deviceRow, themeStyles.deviceRow,
                       styles.deviceRow,
-                      themeStyles.deviceRow, // Keep theme style
                       isSelected && styles.deviceRowSelected,
                     ]}
                     onPress={() => setSelectedDeviceId(device._id)}
@@ -646,6 +670,341 @@ export default function DashboardScreen({ route, navigation }) {
         isDarkTheme={isDarkTheme}
         {...alertConfig}
       />
+    </LinearGradient>
+  );
+}
+
+// 💅 Styles
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    paddingTop: 60,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#ffffffcc",
+    elevation: 6,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  title: { fontSize: 24, fontWeight: "bold", color: "#111" },
+  subtitle: { fontSize: 14, color: "#555", marginTop: 4 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e0f2fe",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  headerActionText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0369a1",
+  },
+  headerIconBtn: { padding: 6 },
+  widgetGrid: { padding: 12, paddingBottom: 60 },
+  row: { justifyContent: "space-around" },
+  widgetItem: { margin: 8 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 50,
+  },
+  placeholder: {
+    textAlign: "center",
+    color: "#666",
+    fontSize: 16,
+    fontStyle: "italic",
+    marginTop: 10,
+  },
+  loader: { marginTop: 80 },
+  loadingText: { color: "#666", textAlign: "center", marginTop: 10 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  modalCard: {
+    width: "92%",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    padding: 20,
+    maxHeight: "85%",
+  },
+  modalTitle: { fontSize: 22, fontWeight: "bold", color: "#0f172a" },
+  modalSubtitle: {
+    fontSize: 14,
+    color: "#475569",
+    marginVertical: 10,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1f2937",
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  deviceList: { maxHeight: 200 },
+  deviceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  deviceRowSelected: {
+    borderWidth: 1,
+    borderColor: "#3b82f6",
+    backgroundColor: "#dbeafe",
+  },
+  deviceName: {
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  deviceToken: {
+    fontSize: 12,
+    color: "#475569",
+    marginTop: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#cbd5f5",
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 14,
+    color: "#111827",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 18,
+  },
+  modalBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  modalCancel: { backgroundColor: "#e2e8f0" },
+  modalConfirm: { backgroundColor: "#2563eb" },
+  modalCancelText: { color: "#1e293b", fontWeight: "600" },
+  modalConfirmText: { color: "#fff", fontWeight: "700" },
+});
+          try {
+            await axios.delete(`${API_BASE}/widgets/${widgetId}`, {
+              headers: { Authorization: `Bearer ${userToken}` },
+            });
+            setWidgets((prev) => prev.filter((w) => String(w._id) !== String(widgetId)));
+            showToast.success("Widget deleted successfully");
+          } catch (err) {
+            console.error("❌ Delete widget error:", err);
+            if (err.response?.status === 401) logout();
+            showToast.error("Failed to delete widget");
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleWidgetLongPress = (widgetId) => {
+    Alert.alert("Widget Options", "Manage this widget", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Edit", onPress: () => console.log("Edit widget:", widgetId) },
+      { text: "Delete", onPress: () => handleDeleteWidget(widgetId) },
+    ]);
+  };
+
+  const renderWidget = ({ item }) => {
+    const commonProps = {
+      title: item.label || "Unnamed",
+      value: item.value ?? "--",
+      icon: item.icon || "speedometer-outline",
+    };
+
+    let component;
+    switch (item.type) {
+      case "gauge":
+        component = <GaugeWidget {...commonProps} />;
+        break;
+      case "indicator":
+        component = <IndicatorWidget {...commonProps} />;
+        break;
+      case "led":
+        component = (
+          <LEDControlWidget
+            title={item.label || "LED Control"}
+            widgetId={item._id}
+            deviceId={item.device_id}
+            deviceToken={item.device_token}
+            virtualPin={item.virtual_pin}
+            nextSchedule={item.next_schedule}
+            initialState={!!item.value}
+            onLongPress={() => handleWidgetLongPress(item._id)}
+            onDelete={() => handleDeleteWidget(item._id)}
+          />
+        );
+        break;
+      default:
+        component = <CardWidget {...commonProps} isDarkTheme={isDarkTheme} />;
+        break;
+    }
+
+    return (
+      item.type === "led" ? (
+        <View style={styles.widgetItem}>{component}</View>
+      ) : (
+        <TouchableOpacity
+          activeOpacity={0.9}
+          delayLongPress={600}
+          onLongPress={() => handleWidgetLongPress(item._id)}
+          style={styles.widgetItem}
+        >
+          {component}
+        </TouchableOpacity>
+      )
+    );
+  };
+
+  if (loading) {
+    return (
+      <LinearGradient colors={themeStyles.gradient} style={styles.container}>
+        <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <LinearGradient colors={themeStyles.gradient} style={styles.container}>
+      <View style={[styles.header, themeStyles.header]}>
+        <View>
+          <Text style={[styles.title, themeStyles.title]}>{dashboard?.name || "Dashboard"}</Text>
+          <Text style={[styles.subtitle, themeStyles.subtitle]}>
+            {dashboard?.description || "Monitor your devices"}
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.headerActionBtn}
+            onPress={handleOpenAddLed}
+          >
+            <Ionicons name="bulb-outline" size={22} color="#007AFF" />
+            <Text style={styles.headerActionText}>Add LED</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={handleDeleteDashboard}
+          >
+            <Ionicons name="trash-outline" size={26} color="#ff3b30" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <Animated.View style={{ opacity: fadeAnim, flex: 1 }}>
+        <FlatList
+          data={widgets}
+          renderItem={renderWidget}
+          keyExtractor={(item) => item._id}
+          numColumns={2}
+          contentContainerStyle={styles.widgetGrid}
+          columnWrapperStyle={styles.row}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={["#007AFF"]}
+            />
+          }
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="bulb-outline" size={50} color="#666" />
+              <Text style={styles.placeholder}>
+                No widgets yet. Add one from the dashboard editor.
+              </Text>
+            </View>
+          )}
+        />
+      </Animated.View>
+
+      <Modal
+        visible={addLedModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAddLedModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, themeStyles.modalCard]}>
+            <Text style={[styles.modalTitle, themeStyles.modalTitle]}>Add LED Widget</Text>
+            <Text style={[styles.modalSubtitle, themeStyles.modalSubtitle]}>
+              Choose a device to control its LED. Each widget gets a unique virtual pin automatically.
+            </Text>
+
+            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Select Device</Text>
+            <ScrollView style={styles.deviceList}>
+              {availableDevices.map((device) => {
+                const isSelected = selectedDeviceId === device._id;
+                return (
+                  <TouchableOpacity
+                    key={device._id}
+                    style={[styles.deviceRow, themeStyles.deviceRow,
+                      styles.deviceRow,
+                      isSelected && styles.deviceRowSelected,
+                    ]}
+                    onPress={() => setSelectedDeviceId(device._id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.deviceName, themeStyles.deviceName]}>
+                        {device.name || "Unnamed Device"}
+                      </Text>
+                      <Text style={[styles.deviceToken, themeStyles.deviceToken]}>
+                        Token: {device.device_token}
+                      </Text>
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={[styles.modalLabel, themeStyles.modalLabel]}>Widget Label</Text>
+            <TextInput
+              style={[styles.input, themeStyles.input]}
+              placeholder="Living room LED"
+              value={ledLabel}
+              onChangeText={setLedLabel}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalCancel]}
+                onPress={() => setAddLedModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalConfirm]}
+                onPress={handleCreateLedWidget}
+                disabled={creatingLed}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {creatingLed ? "Adding..." : "Add Widget"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }

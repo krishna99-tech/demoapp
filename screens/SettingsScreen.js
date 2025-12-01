@@ -1,14 +1,14 @@
-import React, { useContext } from "react";
+import React, { useContext, useState } from "react";
 import {
   View,
   Text,
   Switch,
   StyleSheet,
-  Alert,
   TouchableOpacity,
   ScrollView,
   Linking,
 } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
 import {
@@ -22,9 +22,14 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react-native";
+import { Bell } from "lucide-react-native";
+import CustomAlert from "../components/CustomAlert";
 
 export default function SettingsScreen() {
   const { logout, username, isDarkTheme, toggleTheme } = useContext(AuthContext);
+  const navigation = useNavigation();
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -43,24 +48,44 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = () => {
-    Alert.alert("Confirm Logout", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: logout,
-      },
-    ]);
+    setAlertConfig({
+      type: 'confirm',
+      title: "Confirm Logout",
+      message: "Are you sure you want to log out?",
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
+        { text: "Logout", style: "destructive", onPress: () => { setAlertVisible(false); logout(); } },
+      ],
+    });
+    setAlertVisible(true);
   };
 
   const openLink = async (url) => {
     const supported = await Linking.canOpenURL(url);
     if (supported) await Linking.openURL(url);
-    else Alert.alert("Error", "Cannot open the link right now.");
+    else {
+      setAlertConfig({
+        type: 'error',
+        title: "Error",
+        message: "Cannot open the link right now.",
+        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+      });
+      setAlertVisible(true);
+    }
   };
 
   const handleComingSoon = (title) => {
-    Alert.alert(title, "Feature coming soon 🚀");
+    setAlertConfig({
+      type: 'warning',
+      title: title,
+      message: "Feature coming soon 🚀",
+      buttons: [{ text: "Got it!", onPress: () => setAlertVisible(false) }],
+    });
+    setAlertVisible(true);
+  };
+
+  const handleProfilePress = () => {
+    navigation.navigate("Profile");
   };
 
   return (
@@ -69,8 +94,13 @@ export default function SettingsScreen() {
         colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
         style={styles.header}
       >
-        <Text style={[styles.title, { color: Colors.text }]}>Settings</Text>
-        <Text style={[styles.subtitle, { color: Colors.textSecondary }]}>Manage your preferences</Text>
+        <View style={styles.profileHeader}>
+          <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}><User size={32} color={Colors.primary} /></View>
+          <View>
+            <Text style={[styles.profileName, { color: Colors.text }]}>{username || 'User'}</Text>
+            <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>{`${username?.toLowerCase() || 'user'}@thingsnxt.com`}</Text>
+          </View>
+        </View>
       </LinearGradient>
 
       <ScrollView
@@ -80,7 +110,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: Colors.textSecondary }]}>Account</Text>
 
-          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Profile")}>
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={handleProfilePress}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIcon, { backgroundColor: Colors.primary + "20" }]}>
                 <User size={20} color={Colors.primary} />
@@ -94,6 +124,20 @@ export default function SettingsScreen() {
             </View>
             <ChevronRight size={20} color={Colors.textMuted} />
           </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Notifications")}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIcon, { backgroundColor: Colors.danger + "20" }]}>
+                <Bell size={20} color={Colors.danger} />
+              </View>
+              <View>
+                <Text style={[styles.menuItemTitle, { color: Colors.text }]}>Notifications</Text>
+                <Text style={[styles.menuItemSubtitle, { color: Colors.textMuted }]}>Manage push notifications</Text>
+              </View>
+            </View>
+            <ChevronRight size={20} color={Colors.textMuted} />
+          </TouchableOpacity>
+
 
           <TouchableOpacity style={[styles.menuItem, { backgroundColor: Colors.surface, borderColor: Colors.border }]} onPress={() => handleComingSoon("Security")}>
             <View style={styles.menuItemLeft}>
@@ -185,6 +229,12 @@ export default function SettingsScreen() {
 
         <Text style={[styles.version, { color: Colors.textMuted }]}>Version 1.0.0</Text>
       </ScrollView>
+
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
     </View>
   );
 }
@@ -194,16 +244,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: 80,
+    paddingTop: 70,
     paddingBottom: 24,
     paddingHorizontal: 20,
   },
-  title: {
-    fontSize: 32,
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileName: {
+    fontSize: 24,
     fontWeight: "700",
     marginBottom: 4,
   },
-  subtitle: {
+  profileEmail: {
     fontSize: 14,
   },
   scrollView: {
@@ -276,4 +338,3 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
-

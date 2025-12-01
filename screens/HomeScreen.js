@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Dimensions,
   SafeAreaView,
+  Animated,
   RefreshControl,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
@@ -181,12 +182,73 @@ const DeviceCard = ({ device, onPress, Colors }) => (
   </TouchableOpacity>
 );
 
+const Shimmer = ({ children, style, isDarkTheme }) => {
+  const shimmerAnimatedValue = React.useRef(new Animated.Value(-1)).current;
+
+  React.useEffect(() => {
+    const shimmerAnimation = Animated.loop(
+      Animated.timing(shimmerAnimatedValue, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      })
+    );
+    shimmerAnimation.start();
+    return () => shimmerAnimation.stop();
+  }, []);
+
+  const translateX = shimmerAnimatedValue.interpolate({
+    inputRange: [-1, 1],
+    outputRange: [-width, width],
+  });
+
+  const shimmerColor = isDarkTheme ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)";
+
+  return (
+    <View style={style}>
+      {children}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          width: '100%',
+          transform: [{ translateX }],
+        }}
+      >
+        <LinearGradient
+          colors={["transparent", shimmerColor, "transparent"]}
+          style={{ flex: 1 }}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+        />
+      </Animated.View>
+    </View>
+  );
+};
+
+const DashboardCardSkeleton = ({ Colors }) => (
+  <Shimmer style={[styles.dashboardCard, { backgroundColor: Colors.surfaceLight }]} isDarkTheme={Colors.background === "#0A0E27"}>
+    <View style={styles.dashboardGradient}>
+      <View style={styles.dashboardHeader}>
+        <View style={[styles.dashboardIconContainer, { backgroundColor: Colors.surface }]} />
+      </View>
+      <View style={{ gap: 8 }}>
+        <View style={{ height: 18, width: '60%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+        <View style={{ height: 32, width: '40%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+        <View style={{ height: 13, width: '50%', backgroundColor: Colors.surface, borderRadius: 8, opacity: 0.5 }} />
+      </View>
+    </View>
+  </Shimmer>
+);
+
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { username, devices = [], isDarkTheme, userToken, logout } = useContext(AuthContext);
   const [dashboards, setDashboards] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [dashboardsLoading, setDashboardsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const Colors = {
@@ -210,6 +272,7 @@ export default function HomeScreen() {
 
   const fetchDashboardsAndNotifications = async () => {
     if (!userToken) return;
+    setDashboardsLoading(true);
     try {
       // Fetch Dashboards
       const dashboardsRes = await axios.get(`${API_BASE}/dashboards`, {
@@ -220,6 +283,8 @@ export default function HomeScreen() {
     } catch (err) {
       console.error("Home Screen fetch error:", err.response?.data || err.message);
       if (err.response?.status === 401) logout();
+    } finally {
+      setDashboardsLoading(false);
     }
   };
 
@@ -307,14 +372,21 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dashboardsScroll}
           >
-            {dashboards.map(dashboard => (
-              <DashboardCard
-                key={dashboard._id}
-                dashboard={dashboard}
-                onPress={(d) => navigation.navigate('Dashboard', { dashboard: d })}
-                Colors={Colors}
-              />
-            ))}
+            {dashboardsLoading ? (
+              <>
+                <DashboardCardSkeleton Colors={Colors} />
+                <DashboardCardSkeleton Colors={Colors} />
+              </>
+            ) : (
+              dashboards.map(dashboard => (
+                <DashboardCard
+                  key={dashboard._id}
+                  dashboard={dashboard}
+                  onPress={(d) => navigation.navigate('Dashboard', { dashboard: d })}
+                  Colors={Colors}
+                />
+              ))
+            )}
           </ScrollView>
         </HomeSection>
 

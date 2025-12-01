@@ -26,6 +26,8 @@ import NotificationsScreen from "./screens/NotificationsScreen";
 import SettingsScreen from "./screens/SettingsScreen";
 import HomeScreen from "./screens/HomeScreen";
 import DashboardScreen from "./screens/DashboardScreen";
+import ProfileScreen from "./screens/ProfileScreen";
+import CustomAlert from "./components/CustomAlert";
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -141,12 +143,13 @@ function AppStack() {
       <Stack.Screen name="MainTabs" component={MainTabs} />
       <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal' }} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, presentation: 'modal' }} />
     </Stack.Navigator>
   );
 }
 
 export default function RootNavigator() {
-  const { userToken, loading, isDarkTheme } = useAuth();
+  const { userToken, loading, isDarkTheme, alertVisible, alertConfig } = useAuth();
 
   if (loading) {
     return (
@@ -158,29 +161,36 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: COLORS.background }}}>
-      <Stack.Navigator screenOptions={{ 
-        headerStyle: {
-          backgroundColor: COLORS.card,
-        },
-        headerTintColor: COLORS.text,
-        headerTitleStyle: {
-          fontWeight: 'bold',
-        },
-        headerShadowVisible: false, // Hides the shadow/border under the header
-       }} >
-        {userToken ? (
-          <>
-            <Stack.Screen name="App" component={AppStack} options={{ headerShown: false }}/>
-          </>
-        ) : (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Signup" component={SignupScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-          </>
-        )}
-      </Stack.Navigator>
+      <>
+        <Stack.Navigator screenOptions={{ 
+          headerStyle: {
+            backgroundColor: COLORS.card,
+          },
+          headerTintColor: COLORS.text,
+          headerTitleStyle: {
+            fontWeight: 'bold',
+          },
+          headerShadowVisible: false, // Hides the shadow/border under the header
+         }} >
+          {userToken ? (
+            <>
+              <Stack.Screen name="App" component={AppStack} options={{ headerShown: false }}/>
+            </>
+          ) : (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Signup" component={SignupScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+            </>
+          )}
+        </Stack.Navigator>
+        <CustomAlert
+          visible={alertVisible}
+          isDarkTheme={isDarkTheme}
+          {...alertConfig}
+        />
+      </>
     </NavigationContainer>
   );
 }

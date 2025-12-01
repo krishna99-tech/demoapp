@@ -8,7 +8,6 @@ import {
   TextInput,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -23,6 +22,7 @@ import {
 } from "lucide-react-native";
 import { showToast } from "../components/Toast";
 import { DeviceList } from "../components/DeviceList";
+import CustomAlert from "../components/CustomAlert";
 
 
 const CARD_PADDING = 16;
@@ -42,6 +42,9 @@ export default function DevicesScreen({ navigation }) {
   const [editingDevice, setEditingDevice] = useState(null);
   const [editedDeviceName, setEditedDeviceName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -158,15 +161,17 @@ export default function DevicesScreen({ navigation }) {
   };
 
   const handleDeleteDevice = (device) => {
-    Alert.alert(
-      "Delete Device",
-      `Are you sure you want to delete "${device.name}"? This action cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
+    setAlertConfig({
+      type: 'confirm',
+      title: "Delete Device",
+      message: `Are you sure you want to delete "${device.name}"? This action cannot be undone.`,
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
+            setAlertVisible(false); // Close alert immediately
             try {
               const deviceId = device.id || device._id;
               await deleteDevice(deviceId);
@@ -177,8 +182,9 @@ export default function DevicesScreen({ navigation }) {
             }
           },
         },
-      ]
-    );
+      ],
+    });
+    setAlertVisible(true);
   };
 
   return (
@@ -189,10 +195,15 @@ export default function DevicesScreen({ navigation }) {
         style={styles.header}
       >
         <View style={styles.headerContent}>
-          <Text style={[styles.title, { color: Colors.text }]}>Devices</Text>
-          <Text style={[styles.subtitle, { color: Colors.textSecondary }]}>
-            {devices.length} devices connected
-          </Text>
+          <View>
+            <Text style={[styles.title, { color: Colors.text }]}>Devices</Text>
+            <Text style={[styles.subtitle, { color: Colors.textSecondary }]}>
+              {devices.length} devices connected
+            </Text>
+          </View>
+          <TouchableOpacity style={[styles.addButton, { backgroundColor: Colors.primary }]} onPress={() => setAddDeviceModalVisible(true)}>
+            <Plus size={24} color={Colors.white} />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.searchContainer}>
@@ -265,16 +276,6 @@ export default function DevicesScreen({ navigation }) {
   onRefresh={onRefresh}
   Colors={Colors}
 />
-
-
-      {/* Add Device FAB */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: Colors.primary }]}
-        onPress={() => setAddDeviceModalVisible(true)}
-        activeOpacity={0.8}
-      >
-        <Plus size={28} color={Colors.white} />
-      </TouchableOpacity>
 
       {/* Add Device Modal */}
       <Modal
@@ -379,6 +380,13 @@ export default function DevicesScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Custom Alert */}
+      <CustomAlert
+        visible={alertVisible}
+        isDarkTheme={isDarkTheme}
+        {...alertConfig}
+      />
       </View>
     </GestureHandlerRootView>
   );
@@ -394,6 +402,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 20,
   },
   title: {
@@ -403,6 +414,13 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
+  },
+  addButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   searchContainer: {
     flexDirection: "row",
@@ -464,21 +482,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   filterChipBadgeTextActive: {},
-  fab: {
-    position: "absolute",
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    right: 25,
-    bottom: 90, // Adjust to be above the tab bar
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-  },
   modalContainer: {
     flex: 1,
     justifyContent: "center",

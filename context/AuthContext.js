@@ -8,7 +8,6 @@ import React, {
 } from "react";
 import { View, ActivityIndicator } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Alert } from "react-native";
 import { BASE_URL, WS_URL } from "../constants/config";
 import API from "../services/api";
 
@@ -29,6 +28,7 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [userToken, setUserToken] = useState(null);
   const [username, setUsername] = useState(null);
+  const [email, setEmail] = useState(null);
   const [devices, setDevices] = useState([]);
   const [widgets, setWidgets] = useState([]);
   const [isDarkTheme, setIsDarkTheme] = useState(true);
@@ -38,6 +38,9 @@ export const AuthProvider = ({ children }) => {
   const wsRef = useRef(null);
   const sseAbortController = useRef(null); // For aborting SSE fetch
   const isReconnecting = useRef(true); // Flag to control WS reconnection
+  
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
 
   // ====================================
   // 🏁 INIT: restore session
@@ -47,13 +50,14 @@ export const AuthProvider = ({ children }) => {
       try {
         const token = await AsyncStorage.getItem("userToken");
         const storedUser = await AsyncStorage.getItem("username");
+        const storedEmail = await AsyncStorage.getItem("email");
         const storedTheme = await AsyncStorage.getItem("theme");
 
         if (storedTheme) {
           setIsDarkTheme(storedTheme === "dark");
         }
 
-        if (token && storedUser) {
+        if (token && storedUser && storedEmail) {
           setUserToken(token);
           setUsername(storedUser);
           // Ensure devices are fetched BEFORE connecting to WebSocket
@@ -69,6 +73,16 @@ export const AuthProvider = ({ children }) => {
     init();
   }, []);
 
+  const showAlert = (config) => {
+    setAlertConfig({
+      ...config,
+      buttons: config.buttons.map(btn => ({
+        ...btn,
+        onPress: () => { setAlertVisible(false); btn.onPress?.(); }
+      }))
+    });
+    setAlertVisible(true);
+  };
   // ====================================
   // 🔄 PERIODIC DEVICE REFRESH (DISABLED - Using real-time updates only)
   // ====================================
@@ -103,25 +117,33 @@ export const AuthProvider = ({ children }) => {
         await AsyncStorage.setItem("userToken", data.access_token);
         await AsyncStorage.setItem("refreshToken", data.refresh_token || "");
         await AsyncStorage.setItem(
-          "username",
-          data.user?.username || usernameInput.trim()
+          "username", data.user?.username || usernameInput.trim()
         );
+        await AsyncStorage.setItem("email", data.user?.email || "");
 
         setUserToken(data.access_token);
         setUsername(data.user?.username || usernameInput.trim());
+        setEmail(data.user?.email || "");
 
         // Ensure devices are fetched BEFORE connecting to WebSocket
         await fetchDevices(data.access_token);
         connectWebSocket(data.access_token);
 
-        Alert.alert("Login Success", `Welcome ${data.user?.username || ""}!`);
+        showAlert({
+          type: 'success',
+          title: "Login Success",
+          message: `Welcome ${data.user?.username || ""}!`,
+          buttons: [{ text: "Continue" }]
+        });
         navigation?.reset({ index: 0, routes: [{ name: "MainTabs" }] });
       } else {
         throw new Error(data?.detail || "Invalid credentials");
       }
     } catch (err) {
       console.error("❌ Login error:", err);
-      Alert.alert("Login Failed", err.message || "Check your credentials");
+      showAlert({
+        type: 'error', title: "Login Failed", message: err.message || "Check your credentials", buttons: [{ text: "OK" }]
+      });
     }
   };
 
@@ -134,16 +156,25 @@ export const AuthProvider = ({ children }) => {
       if (data?.access_token) {
         await AsyncStorage.setItem("userToken", data.access_token);
         await AsyncStorage.setItem("username", data.user?.username);
+        await AsyncStorage.setItem("email", data.user?.email);
         setUserToken(data.access_token);
         setUsername(data.user?.username);
+        setEmail(data.user?.email);
         await fetchDevices(data.access_token);
         connectWebSocket(data.access_token); // Use WebSocket for consistency
-        Alert.alert("Signup Success", "Welcome!");
+        showAlert({
+          type: 'success', title: "Signup Success", message: "Welcome!", buttons: [{ text: "OK" }]
+        });
       } else {
         throw new Error("Signup failed");
       }
     } catch (err) {
-      Alert.alert("Signup Error", err.message);
+      showAlert({
+        type: 'error',
+        title: "Signup Error",
+        message: err.message,
+        buttons: [{ text: "OK" }]
+      });
     }
   };
 
@@ -166,10 +197,12 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.multiRemove([
         "userToken",
         "username",
+        "email",
         "refreshToken",
       ]);
       setUserToken(null);
       setUsername(null);
+      setEmail(null);
       setDevices([]);
       setWidgets([]);
     };
@@ -185,7 +218,9 @@ export const AuthProvider = ({ children }) => {
       await AsyncStorage.setItem("theme", newTheme ? "dark" : "light");
     } catch (err) {
       console.error("Failed to save theme:", err);
-      Alert.alert("Error", "Could not save theme preference.");
+      showAlert({
+        type: 'error', title: "Error", message: "Could not save theme preference.", buttons: [{ text: "OK" }]
+      });
     }
   };
 
@@ -351,11 +386,34 @@ export const AuthProvider = ({ children }) => {
       return true;
     } catch (err) {
       console.error("Delete device error:", err);
-      Alert.alert("Delete failed", err.message || "Failed to delete device");
+      showAlert({
+        type: 'error', title: "Delete failed", message: err.message || "Failed to delete device", buttons: [{ text: "OK" }]
+      });
       throw err;
     };
   };
 
+  const updateUser = async (userData) => {
+    try {
+      // Assuming you have an API.updateUser method
+      const updatedUser = await API.updateUser(userData);
+      if (updatedUser) {
+        // Update state and AsyncStorage
+        if (updatedUser.username) {
+          setUsername(updatedUser.username);
+          await AsyncStorage.setItem("username", updatedUser.username);
+        }
+        if (updatedUser.email) {
+          setEmail(updatedUser.email);
+          await AsyncStorage.setItem("email", updatedUser.email);
+        }
+        return updatedUser;
+      }
+    } catch (err) {
+      console.error("Update user error:", err);
+      throw new Error(err.response?.data?.detail || "Failed to update profile.");
+    }
+  };
   // ====================================
   // 🌐 TELEMETRY
   // ====================================
@@ -774,6 +832,7 @@ const connectWebSocket = (token) => {
       value={{
         userToken,
         username,
+        email,
         devices,
         widgets,
         setWidgets,
@@ -781,6 +840,7 @@ const connectWebSocket = (token) => {
         updateDevice,
         deleteDevice,
         fetchDevices,
+        updateUser,
         handleRealtimeMessage, // Expose if needed by components, otherwise can be kept internal
         fetchTelemetry,
         connectWebSocket,
@@ -794,6 +854,9 @@ const connectWebSocket = (token) => {
         isRefreshing,
         lastUpdated,
         wsRef,
+        alertVisible,
+        alertConfig,
+        showAlert,
       }}
     >
       {children}
