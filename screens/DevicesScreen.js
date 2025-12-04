@@ -21,14 +21,14 @@ import {
   Plus,
 } from "lucide-react-native";
 import { showToast } from "../components/Toast";
-import { DeviceList } from "../components/DeviceList";
+import { DeviceList } from "../components/Devices/DeviceList";
 import CustomAlert from "../components/CustomAlert";
 
 
-const CARD_PADDING = 16;
+
 
 export default function DevicesScreen({ navigation }) {
-  const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices } = useContext(AuthContext);
+  const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices, isRefreshing: isContextRefreshing } = useContext(AuthContext);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
   
@@ -272,7 +272,7 @@ export default function DevicesScreen({ navigation }) {
   onEdit={handleOpenEditModal}
   onDelete={handleDeleteDevice}
   onPress={(device) => navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })}
-  refreshing={isRefreshing}      // ✅ CORRECT
+  refreshing={isRefreshing || isContextRefreshing}
   onRefresh={onRefresh}
   Colors={Colors}
 />

@@ -261,7 +261,7 @@ function DashboardContent({ route, navigation }) {
           ) : (
             <TouchableOpacity style={styles.headerActionBtn} onPress={handleOpenAddLed}>
               <Ionicons name="bulb-outline" size={22} color="#0369a1" />
-              <Text style={styles.headerActionText}>Add LED</Text>
+              <Text style={styles.headerActionText}>Add Button</Text>
             </TouchableOpacity>
           )}
 

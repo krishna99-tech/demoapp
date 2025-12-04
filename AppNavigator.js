@@ -29,6 +29,7 @@ import HomeScreen from "./screens/HomeScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 
+
 import CustomAlert from "./components/CustomAlert";
 
 const Stack = createNativeStackNavigator();
@@ -147,7 +148,6 @@ function AppStack() {
       <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal' }} />
       <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, presentation: 'modal' }} />
-      
     </Stack.Navigator>
   );
 }

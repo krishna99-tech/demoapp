@@ -33,12 +33,13 @@ import {
   Flame,
   Zap,
   Copy,
+  Star,
 } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
 import WidgetRenderer from "../components/widgets/WidgetRenderer";
-import DeviceDetailSkeleton from "../components/DeviceDetailSkeleton";
+import DeviceDetailSkeleton from "../components/Devices/DeviceDetailSkeleton";
 
 const COLORS = {
   background: "#0A0E27",
@@ -126,6 +127,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  
+  // --- FAVORITES (New Feature) ---
+  // In a real app, this state and toggle function would come from AuthContext
+  const [isFavorite, setIsFavorite] = useState(false); 
 
   // --- Theme-aware Colors ---
   const Colors = useMemo(() => ({
@@ -226,12 +231,16 @@ export default function DeviceDetailScreen({ route, navigation }) {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>
+          {/* Favorite Button (New Feature) */}
+          <TouchableOpacity onPress={() => setIsFavorite(!isFavorite)} style={styles.headerButton}>
+            <Star size={22} color={isFavorite ? Colors.warning : Colors.primary} fill={isFavorite ? Colors.warning : 'transparent'} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleRefresh} style={styles.headerButton}><RefreshCw size={20} color={Colors.primary} /></TouchableOpacity>
           <TouchableOpacity onPress={handleDeleteDevice} style={styles.headerButton}><Trash2 size={20} color={Colors.danger} /></TouchableOpacity>
         </View>
       ),
     });
-  }, [navigation, handleRefresh, handleDeleteDevice, Colors]);
+  }, [navigation, handleRefresh, handleDeleteDevice, Colors, isFavorite]);
 
   const handleSensorPress = useCallback((sensor) => {
     setSelectedSensor(sensor);

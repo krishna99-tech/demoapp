@@ -15,7 +15,7 @@ import {
   Animated,
   KeyboardAvoidingView,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { LinearGradient } from "expo-linear-gradient"; // Keep this for the header and card gradients
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -23,21 +23,28 @@ import { AuthContext } from "../context/AuthContext";
 import api from "../services/api";
 import { showToast } from "../components/Toast";
 import CustomAlert from "../components/CustomAlert";
-import { formatDate } from "../utils/format";
+import { formatDate } from "../utils/format"; // Keep this for date formatting
+import { SwipeListView } from 'react-native-swipe-list-view';
 
 // 🟢 Enable layout animation for Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// 🎨 Theme-aware card gradients
+const LIGHT_CARD_GRADIENT = ["#FF9A8B", "#FF6A88", "#FF99AC"];
+const DARK_CARD_GRADIENT = ["#434343", "#232526"];
+
 // 🔹 Animated Card Component (Moved outside for better structure)
-const DashboardCard = React.memo(({ item, onPress }) => {
+const DashboardCard = React.memo(({ item, onPress, isDarkTheme }) => {
   const scale = useRef(new Animated.Value(1)).current;
 
   const onPressIn = () =>
     Animated.spring(scale, { toValue: 0.97, useNativeDriver: true }).start();
   const onPressOut = () =>
     Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start();
+
+  const cardGradientColors = isDarkTheme ? DARK_CARD_GRADIENT : LIGHT_CARD_GRADIENT;
 
   return (
     <Animated.View style={{ transform: [{ scale }] }}>
@@ -49,7 +56,7 @@ const DashboardCard = React.memo(({ item, onPress }) => {
         onPressOut={onPressOut}
       >
         <LinearGradient
-          colors={["#FF9A8B", "#FF6A88", "#FF99AC"]}
+          colors={cardGradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.gradientCard}
@@ -206,6 +213,41 @@ export default function MainDashboardScreen() {
     }
   };
 
+  // 🔹 Delete dashboard
+  const deleteDashboard = (dashboardId) => {
+    setAlertConfig({
+      type: 'confirm',
+      title: "Delete Dashboard",
+      message: "Are you sure you want to delete this dashboard? This action cannot be undone.",
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setAlertVisible(false);
+            try {
+              await api.deleteDashboard(dashboardId);
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setDashboards((prev) => prev.filter((d) => d._id !== dashboardId));
+              showToast.success("Dashboard deleted");
+            } catch (err) {
+              console.error("Delete dashboard error:", err.message);
+              setAlertConfig({
+                type: 'error',
+                title: "Error",
+                message: "Failed to delete dashboard.",
+                buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
+              });
+              setAlertVisible(true);
+            }
+          },
+        },
+      ],
+    });
+    setAlertVisible(true);
+  };
+
   // 🔹 Open dashboard details (update as needed)
   const openDashboard = (dashboard) => {
     navigation.navigate("Dashboard", { dashboard });
@@ -235,10 +277,25 @@ export default function MainDashboardScreen() {
         style={{ marginTop: 30 }}
       />
     ) : (
-      <FlatList
+      <SwipeListView
         data={dashboards}
         keyExtractor={(item) => item._id || item.id || item.name}
-        renderItem={({ item }) => <DashboardCard item={item} onPress={openDashboard} />}
+        renderItem={({ item }, rowMap) => (
+          <DashboardCard item={item} onPress={() => openDashboard(item)} isDarkTheme={isDarkTheme} />
+        )}
+        renderHiddenItem={({ item }) => (
+          <View style={styles.rowBack}>
+            <TouchableOpacity
+              style={[styles.backRightBtn, styles.backRightBtnRight]}
+              onPress={() => deleteDashboard(item._id)}
+            >
+              <Ionicons name="trash-outline" size={25} color="white" />
+              <Text style={styles.backTextWhite}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        rightOpenValue={-100} // How much to open from the right
+        disableRightSwipe={true} // Only allow left swipe (revealing the right button)
         contentContainerStyle={{ padding: 16 }}
         ListEmptyComponent={() => (
           <Text
@@ -255,7 +312,7 @@ export default function MainDashboardScreen() {
       />
     )}
 
-    {/* 🪟 Create Dashboard Modal */}
+    {/* 🪟 entDashboard Modal */}
     <Modal visible={modalVisible} transparent animationType="fade" onRequestClose={() => setModalVisible(false)}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalVisible(false)} />
@@ -290,22 +347,22 @@ export default function MainDashboardScreen() {
           </View>
 
           <View style={styles.modalButtons}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
+            <TouchableOpacity style={[styles.modalButton, styles.cancelBtn]} onPress={() => setModalVisible(false)}>
+              <Text style={[styles.modalButtonText, styles.cancelText]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.addBtn} onPress={addDashboard}>
-              <Text style={styles.addText}>Create Dashboard</Text>
+            <TouchableOpacity style={[styles.modalButton, styles.addBtn]} onPress={addDashboard}>
+              <Text style={[styles.modalButtonText, styles.addText]}>Create</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
 
-      <CustomAlert
-        visible={alertVisible}
-        isDarkTheme={isDarkTheme}
-        {...alertConfig}
-      />
+    <CustomAlert
+      visible={alertVisible}
+      isDarkTheme={isDarkTheme}
+      {...alertConfig}
+    />
     </LinearGradient>
   );
 }
@@ -403,28 +460,53 @@ const styles = StyleSheet.create({
     marginTop: 24,
     gap: 12,
   },
-  cancelBtn: {
+  modalButton: {
     flex: 1,
     padding: 14,
     borderRadius: 12,
-    backgroundColor: '#E5E7EB',
     alignItems: 'center',
   },
-  cancelText: { 
-    color: "#374151", 
+  modalButtonText: {
     fontSize: 16,
     fontWeight: '600',
   },
+  cancelBtn: {
+    backgroundColor: '#E5E7EB',
+  },
+  cancelText: { 
+    color: "#374151", 
+  },
   addBtn: { 
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
     backgroundColor: '#FF6347',
-    alignItems: 'center',
   },
   addText: { 
     color: "#fff", 
-    fontWeight: "bold", 
-    fontSize: 16, 
+  },
+  // Swipe-to-delete styles
+  rowBack: {
+    alignItems: 'center',
+    backgroundColor: '#DDD', // Fallback, will be covered by button
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: 14, // Match card margin
+    borderRadius: 14, // Match card borderRadius
+    overflow: 'hidden', // Ensure button doesn't overflow rounded corners
+  },
+  backRightBtn: {
+    alignItems: 'center',
+    bottom: 0,
+    justifyContent: 'center',
+    position: 'absolute',
+    top: 0,
+    width: 100,
+    borderRadius: 14, // Apply to the button itself
+  },
+  backRightBtnRight: {
+    backgroundColor: '#FF3B30', // Red for delete
+    right: 0,
+  },
+  backTextWhite: {
+    color: '#FFF',
   },
 });

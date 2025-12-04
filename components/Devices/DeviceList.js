@@ -7,12 +7,13 @@ import {
   RefreshControl,
 } from "react-native";
 import DeviceCard from "./DeviceCard";
+import DeviceCardSkeleton from "./DeviceCardSkeleton";
 
 // Component shown when list is empty
-const EmptyListComponent = () => (
+const EmptyListComponent = ({ Colors }) => (
   <View style={styles.emptyContainer}>
-    <Text style={styles.emptyText}>No Devices Found</Text>
-    <Text style={styles.emptySubText}>
+    <Text style={[styles.emptyText, { color: Colors.text }]}>No Devices Found</Text>
+    <Text style={[styles.emptySubText, { color: Colors.textMuted }]}>
       You can add a new device from the settings screen.
     </Text>
   </View>
@@ -26,8 +27,19 @@ export const DeviceList = ({
   onEdit,
   onDelete,
   isDarkTheme,
-  Colors
+  Colors,
 }) => {
+  // Show skeletons on initial load (refreshing is true but no devices yet)
+  if (refreshing && devices.length === 0) {
+    return (
+      <View style={styles.listContainer}>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <DeviceCardSkeleton key={index} isDarkTheme={isDarkTheme} Colors={Colors} />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <FlatList
       contentContainerStyle={styles.listContainer}
@@ -42,7 +54,7 @@ export const DeviceList = ({
         />
       )}
       keyExtractor={(item) => String(item.id || item._id)}
-      ListEmptyComponent={EmptyListComponent}
+      ListEmptyComponent={<EmptyListComponent Colors={Colors} />}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -64,6 +76,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 100,
   },
-  emptyText: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
-  emptySubText: { color: "#8E8E93", fontSize: 14, marginTop: 8 },
+  emptyText: { fontSize: 18, fontWeight: "bold" },
+  emptySubText: { fontSize: 14, marginTop: 8 },
 });

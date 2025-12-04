@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
+  Modal,
+  ActivityIndicator,
+  Pressable,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -27,6 +30,7 @@ import {
   Trash2,   // For Clear Cache
   Palette,  // For Appearance
 } from "lucide-react-native";
+import { LayoutDashboard } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MenuItem from "../components/settings/MenuItem";
@@ -45,7 +49,11 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  const [isExportModalVisible, setExportModalVisible] = useState(false);
+  const [selectedRange, setSelectedRange] = useState("7d");
+  const [isExporting, setIsExporting] = useState(false);
 
+  // ⭐ This Colors object is a great candidate for centralization in a theme context/hook
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
     surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
@@ -93,9 +101,123 @@ export default function SettingsScreen() {
     showToast.info("Coming Soon", `${title} feature is under development.`);
   };
 
+  const handleClearCache = () => {
+    setAlertConfig({
+      type: 'confirm',
+      title: "Clear Cache",
+      message: "Are you sure you want to clear temporary app data? This action cannot be undone.",
+      buttons: [
+        { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => { setAlertVisible(false); showToast.success("Cache Cleared", "Temporary data has been removed."); }
+        },
+      ],
+    });
+    setAlertVisible(true);
+  };
+
+  const handleDataExport = () => {
+    setExportModalVisible(true);
+  };
+
+  const handleExportConfirm = () => {
+    setIsExporting(true);
+    // Simulate API call
+    setTimeout(() => {
+      setIsExporting(false);
+      setExportModalVisible(false);
+      showToast.success(
+        "Export Started",
+        "Your data export has begun. You will receive an email with the download link shortly."
+      );
+    }, 2000);
+  };
+
+
   const handleProfilePress = () => {
     navigation.navigate("Profile");
   };
+
+  const handleDashboardsPress = () => {
+    navigation.navigate("Dashboards");
+  };
+
+  // ⭐ Refactored Menu Structure
+  const menuSections = [
+    {
+      title: "Account",
+      items: [
+        {
+          icon: { component: <User size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          title: "Profile",
+          subtitle: username || "Edit your personal information",
+          onPress: handleProfilePress,
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <Shield size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          title: "Security",
+          subtitle: "Change your password",
+          onPress: () => navigation.navigate('ForgotPassword'),
+          rightComponent: { type: 'chevron' },
+        },
+      ],
+    },
+    {
+      title: "General",
+      items: [
+        {
+          icon: { component: <Smartphone size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" },
+          title: "Manage Devices",
+          subtitle: "View and organize your devices",
+          onPress: () => navigation.navigate("Devices"),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" },
+          title: "Notifications",
+          subtitle: "View alerts and system messages",
+          onPress: () => navigation.navigate("Notifications"),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <LayoutDashboard size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
+          title: "Manage Dashboards",
+          subtitle: "Organize and customize dashboards",
+          onPress: handleDashboardsPress,
+          rightComponent: { type: 'chevron' },
+        },
+      ],
+    },
+    {
+      title: "Preferences",
+      items: [
+        {
+          icon: { component: <Palette size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
+          title: "Appearance",
+          subtitle: isDarkTheme ? "Dark Mode" : "Light Mode",
+          rightComponent: { type: 'switch', value: isDarkTheme, onValueChange: toggleTheme, trackColor: Colors.primary },
+        },
+      ],
+    },
+    {
+      title: "Data & Privacy",
+      items: [
+        { icon: { component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, title: "Data Export", subtitle: "Download sensor data logs", onPress: handleDataExport, rightComponent: { type: 'chevron' } },
+        { icon: { component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }, title: "Clear Cache", subtitle: "Clear temporary app data", onPress: handleClearCache },
+      ],
+    },
+    {
+      title: "Support",
+      items: [
+        { icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, title: "Help Center", subtitle: "FAQs and support articles", onPress: () => openLink("https://thingsnxt.vercel.app/support"), rightComponent: { type: 'chevron' } },
+        { icon: { component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" }, title: "About", subtitle: "App version and information", onPress: () => openLink("https://thingsnxt.vercel.app/"), rightComponent: { type: 'chevron' } },
+      ],
+    },
+  ];
+
 
   // Reusable Section Component
   const SettingsSection = ({ title, children }) => (
@@ -108,24 +230,26 @@ export default function SettingsScreen() {
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <LinearGradient
-        colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
+        colors={isDarkTheme ? [Colors.surface, Colors.background] : ["#FFFFFF", "#F1F5F9"]}
         style={[styles.header, { paddingTop: insets.top + 20 }]} // Adjust padding for safe area
       >
         <View style={styles.profileHeader}>
-          {/* Profile Info (Left Side) */}
-          <View style={styles.profileInfoContainer}>
-            <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}>
-              <User size={32} color={Colors.primary} />
+          {/* Profile Info (Left Side) - Now Tappable */}
+          <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.8}>
+            <View style={styles.profileInfoContainer}>
+              <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}>
+                <User size={32} color={Colors.primary} />
+              </View>
+              <View>
+                <Text style={[styles.profileName, { color: Colors.text }]}>
+                  {username || 'User'}
+                </Text>
+                <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>
+                  {email || 'user@example.com'}
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text style={[styles.profileName, { color: Colors.text }]}>
-                {username || 'User'}
-              </Text>
-              <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>
-                {email || 'user@example.com'}
-              </Text>
-            </View>
-          </View>
+          </TouchableOpacity>
           {/* Logout Button (Right Side) */}
           <TouchableOpacity style={styles.headerLogoutButton} onPress={handleLogout}>
             <LogOut size={24} color={Colors.danger} />
@@ -137,95 +261,18 @@ export default function SettingsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Account Section */}
-        <SettingsSection title="Account">
-          <MenuItem
-            icon={{ component: <User size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
-            title="Profile"
-            subtitle={username || "Edit your personal information"}
-            onPress={handleProfilePress}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-          <MenuItem
-            icon={{ component: <Shield size={20} color={Colors.success} />, bgColor: Colors.success + "20" }}
-            title="Security"
-            subtitle="Change your password"
-            onPress={() => navigation.navigate('ForgotPassword')}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-        </SettingsSection>
-
-        {/* General Section */}
-        <SettingsSection title="General">
-          <MenuItem
-            icon={{ component: <Smartphone size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" }}
-            title="Manage Devices"
-            subtitle="View and organize your devices"
-            onPress={() => navigation.navigate("Devices")}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-          <MenuItem
-            icon={{ component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }}
-            title="Notifications"
-            subtitle="View alerts and system messages"
-            onPress={() => navigation.navigate("Notifications")}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-        </SettingsSection>
-
-        {/* Preferences */}
-        <SettingsSection title="Preferences">
-          <MenuItem
-            icon={{ component: <Palette size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" }}
-            title="Appearance"
-            subtitle={isDarkTheme ? "Dark Mode" : "Light Mode"}
-            rightComponent={{ type: 'switch', value: isDarkTheme, onValueChange: toggleTheme, trackColor: Colors.primary }}
-            Colors={Colors}
-          />
-        </SettingsSection>
-
-        {/* Data & Privacy */}
-        <SettingsSection title="Data & Privacy">
-          <MenuItem
-            icon={{ component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
-            title="Data Export"
-            subtitle="Download sensor data logs"
-            onPress={() => handleComingSoon("Data Export")}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-          <MenuItem
-            icon={{ component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }}
-            title="Clear Cache"
-            subtitle="Clear temporary app data"
-            onPress={() => handleComingSoon("Clear Cache")}
-            Colors={Colors}
-          />
-        </SettingsSection>
-
-        {/* Support */}
-        <SettingsSection title="Support">
-          <MenuItem
-            icon={{ component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }}
-            title="Help Center"
-            subtitle="FAQs and support articles"
-            onPress={() => openLink("https://thingsnxt.vercel.app/support")}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-          <MenuItem
-            icon={{ component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" }}
-            title="About"
-            subtitle="App version and information"
-            onPress={() => openLink("https://thingsnxt.vercel.app/")}
-            rightComponent={{ type: 'chevron' }}
-            Colors={Colors}
-          />
-        </SettingsSection>
+        {/* Render menu sections dynamically */}
+        {menuSections.map((section) => (
+          <SettingsSection key={section.title} title={section.title}>
+            {section.items.map((item) => (
+              <MenuItem
+                key={item.title}
+                {...item}
+                Colors={Colors}
+              />
+            ))}
+          </SettingsSection>
+        ))}
 
         <Text style={[styles.version, { color: Colors.textMuted }]}>Version 1.0.0</Text>
       </ScrollView>
@@ -235,6 +282,66 @@ export default function SettingsScreen() {
         isDarkTheme={isDarkTheme}
         {...alertConfig}
       />
+
+      {/* Data Export Modal */}
+      <Modal
+        visible={isExportModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setExportModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Export Sensor Data</Text>
+            <Text style={[styles.modalSubtitle, { color: Colors.textSecondary }]}>
+              Select a time range for the data you want to export.
+            </Text>
+
+            <View style={styles.rangeContainer}>
+              {[
+                { key: "7d", label: "Last 7 Days" },
+                { key: "30d", label: "Last 30 Days" },
+                { key: "all", label: "All Time" },
+              ].map((range) => (
+                <Pressable
+                  key={range.key}
+                  style={[
+                    styles.rangeOption,
+                    { backgroundColor: Colors.surfaceLight, borderColor: Colors.border },
+                    selectedRange === range.key && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                  ]}
+                  onPress={() => setSelectedRange(range.key)}
+                >
+                  <Text style={[styles.rangeText, { color: Colors.text }, selectedRange === range.key && { color: Colors.white }]}>
+                    {range.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+                onPress={() => setExportModalVisible(false)}
+                disabled={isExporting}
+              >
+                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.primary }, isExporting && { opacity: 0.7 }]}
+                onPress={handleExportConfirm}
+                disabled={isExporting}
+              >
+                {isExporting ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: Colors.white }]}>Export</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -251,12 +358,10 @@ const styles = StyleSheet.create({
   profileHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between', // Distribute space between profile info and logout button
-    alignItems: 'center',
   },
   profileInfoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
     alignItems: 'center',
     gap: 16,
   },
@@ -298,5 +403,58 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "center",
     marginTop: 8,
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  modalContent: {
+    width: "90%",
+    borderRadius: 16,
+    padding: 24,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  rangeContainer: {
+    gap: 12,
+    marginBottom: 24,
+  },
+  rangeOption: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  rangeText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalBtnText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
