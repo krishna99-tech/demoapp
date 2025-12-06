@@ -24,6 +24,9 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const { login, isDarkTheme, showAlert } = useAuth();
   const navigation = useNavigation();
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({});
+
 
   // Handle Login
   const handleLogin = async () => {

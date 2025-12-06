@@ -5,7 +5,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Animated
+  Animated,
+  TextInput
 } from 'react-native';
 
 import { AuthContext } from '../context/AuthContext';
@@ -26,7 +27,6 @@ import {
 import CustomAlert from '../components/CustomAlert';
 import StatCard from '../components/profile/StatCard';
 import api from '../services/api';
-import ProfileInfoRow from '../components/profile/ProfileInfoRow';
 
 // Utility
 const alpha = (hex, opacity) => {
@@ -34,7 +34,7 @@ const alpha = (hex, opacity) => {
   return hex + o;
 };
 
-// Reference height for header animation (not absolute)
+// Reference height for header animation
 const HEADER_HEIGHT = 220;
 
 export default function ProfileScreen({ navigation }) {
@@ -75,7 +75,7 @@ export default function ProfileScreen({ navigation }) {
     textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
   };
 
-  // Collapse: avatar + name move slightly up, stay centered
+  // Animations
   const avatarScale = scrollY.interpolate({
     inputRange: [0, 140],
     outputRange: [1, 0.8],
@@ -84,13 +84,13 @@ export default function ProfileScreen({ navigation }) {
 
   const avatarTranslateY = scrollY.interpolate({
     inputRange: [0, 140],
-    outputRange: [0, -60], // Move up as user scrolls
+    outputRange: [0, -60],
     extrapolate: 'clamp',
   });
 
   const nameTranslateY = scrollY.interpolate({
     inputRange: [0, 140],
-    outputRange: [0, -50], // Move up as user scrolls
+    outputRange: [0, -50],
     extrapolate: 'clamp',
   });
 
@@ -100,12 +100,16 @@ export default function ProfileScreen({ navigation }) {
     extrapolate: 'clamp',
   });
 
+  // FIXED: Reset ONLY when NOT editing
   useEffect(() => {
-    setEditedUsername(username || "");
-    setEditedEmail(email || "");
-    setHasChanges(false);
-  }, [username, email]);
+    if (!isEditing) {
+      setEditedUsername(username || "");
+      setEditedEmail(email || "");
+      setHasChanges(false);
+    }
+  }, [username, email, isEditing]);
 
+  // Load dashboard count
   useEffect(() => {
     const loadDashboards = async () => {
       try {
@@ -121,6 +125,7 @@ export default function ProfileScreen({ navigation }) {
     loadDashboards();
   }, []);
 
+  // Track changes
   useEffect(() => {
     setHasChanges(editedUsername !== username || editedEmail !== email);
   }, [editedUsername, editedEmail, username, email]);
@@ -158,14 +163,13 @@ export default function ProfileScreen({ navigation }) {
       if (editedEmail !== email) updates.email = editedEmail;
 
       if (Object.keys(updates).length > 0) {
-        // Construct the full updated user object to pass to the context
-        const updatedUser = {
-          ...user, // Spread the existing user object
-          ...updates, // Apply the changes
-        };
+        const updatedUser = { ...user, ...updates };
         await updateUser(updatedUser);
       }
 
+      // FIXED: Exit editing mode BEFORE context update completes
+      setIsEditing(false);
+      
       setAlertConfig({
         type: "success",
         title: "Profile Updated",
@@ -173,12 +177,11 @@ export default function ProfileScreen({ navigation }) {
         buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
       });
       setAlertVisible(true);
-      setIsEditing(false);
     } catch (err) {
       setAlertConfig({
         type: "error",
         title: "Update Failed",
-        message: err.message,
+        message: err.message || "Failed to update profile.",
         buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
       });
       setAlertVisible(true);
@@ -212,9 +215,41 @@ export default function ProfileScreen({ navigation }) {
     setAlertVisible(true);
   };
 
+  // Inline ProfileInfoRow component (fully functional)
+  const ProfileInfoRow = ({ icon, label, value, onChangeText, placeholder, Colors, isEditing }) => (
+    <View style={styles.infoRow}>
+      <View style={[styles.iconContainer, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
+        {icon}
+      </View>
+      <View style={styles.infoContent}>
+        <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>{label}</Text>
+        {isEditing ? (
+          <TextInput
+            style={[styles.inputField, { 
+              color: Colors.text, 
+              backgroundColor: Colors.surfaceLight,
+              borderColor: Colors.border
+            }]}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={true}
+          />
+        ) : (
+          <Text style={[styles.infoValue, { color: Colors.text }]} numberOfLines={1}>
+            {value || placeholder || 'Not set'}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
-      {/* Collapsing profile header (now positioned absolutely) */}
+      {/* Collapsing profile header */}
       <Animated.View style={[styles.headerWrapper, {
         transform: [{
           translateY: scrollY.interpolate({
@@ -394,7 +429,7 @@ export default function ProfileScreen({ navigation }) {
           <View style={[styles.card, { backgroundColor: Colors.surface }]}>
             <TouchableOpacity
               style={styles.securityRow}
-              onPress={() => navigation.navigate("ForgotPassword")}
+              onPress={() => navigation.navigate('ForgotPassword')}
             >
               <Shield size={20} color={Colors.textSecondary} />
               <Text style={[styles.securityRowText, { color: Colors.text }]}>
@@ -436,7 +471,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  // header now part of scrollable content
   headerWrapper: {
     position: 'absolute',
     top: 0,
@@ -529,6 +563,50 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
+  // ProfileInfoRow styles
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#00000010',
+  },
+
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+
+  infoContent: {
+    flex: 1,
+  },
+
+  infoLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+
+  infoValue: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  inputField: {
+    fontSize: 16,
+    fontWeight: '600',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderRadius: 8,
+    marginTop: 2,
+  },
+
   inlineActionsRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -581,30 +659,6 @@ const styles = StyleSheet.create({
   securityRowText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-
- grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-
-  infoItem: {
-    width: '48%',
-    gap: 8,
-  },
-
-  section: {
-    padding: 20,
-    borderRadius: 16,
-    marginTop: 24,
-    overflow: 'hidden',
-  },
-  sensorCard: {
-    width: '48.5%',
-    borderRadius: 12,
-    padding: 16,
-    gap: 12,
-    overflow: 'hidden',
+    flex: 1,
   },
 });

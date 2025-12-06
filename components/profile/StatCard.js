@@ -1,5 +1,6 @@
+// StatCard.jsx - UPDATED with loading support
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 // Safe hex + opacity utility
@@ -8,7 +9,14 @@ const alpha = (hex, opacity) => {
   return hex + o;
 };
 
-const StatCard = ({ icon, value, label, colors, isDarkTheme }) => {
+const StatCard = ({ 
+  icon, 
+  value, 
+  label, 
+  colors, 
+  isDarkTheme, 
+  loading = false 
+}) => {
   // theme text colors
   const ThemeColors = useMemo(
     () => ({
@@ -28,6 +36,22 @@ const StatCard = ({ icon, value, label, colors, isDarkTheme }) => {
     colors.every((c) => typeof c === "string" && c.startsWith("#"))
       ? colors
       : ThemeColors.fallback;
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={safeColors} style={styles.card}>
+          <View style={styles.iconWrapper}>
+            <ActivityIndicator size="small" color="rgba(255,255,255,0.8)" />
+          </View>
+          <Text style={[styles.value, { color: ThemeColors.text }]}>--</Text>
+          <Text style={[styles.label, { color: ThemeColors.textSecondary }]}>
+            {label}
+          </Text>
+        </LinearGradient>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

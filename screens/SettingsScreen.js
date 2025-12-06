@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Linking,
   Modal,
   ActivityIndicator,
   Pressable,
@@ -16,8 +15,6 @@ import { LinearGradient } from "expo-linear-gradient";
 import { AuthContext } from "../context/AuthContext";
 import {
   User,
-  Moon,
-  Sun,
   Shield,
   Smartphone,
   HelpCircle,
@@ -25,7 +22,6 @@ import {
   ChevronRight,
   LogOut,
   Bell,
-  Wifi,
   Database, // For Data Export
   Trash2,   // For Clear Cache
   Palette,  // For Appearance
@@ -83,22 +79,8 @@ export default function SettingsScreen() {
     setAlertVisible(true);
   };
 
-  const openLink = async (url) => {
-    const supported = await Linking.canOpenURL(url);
-    if (supported) await Linking.openURL(url);
-    else {
-      setAlertConfig({
-        type: 'error',
-        title: "Error",
-        message: "Cannot open the link right now.",
-        buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }],
-      });
-      setAlertVisible(true);
-    }
-  };
-
-  const handleComingSoon = (title) => {
-    showToast.info("Coming Soon", `${title} feature is under development.`);
+  const openWebView = (url, title) => {
+    navigation.navigate('WebView', { url, title });
   };
 
   const handleClearCache = () => {
@@ -212,8 +194,20 @@ export default function SettingsScreen() {
     {
       title: "Support",
       items: [
-        { icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, title: "Help Center", subtitle: "FAQs and support articles", onPress: () => openLink("https://thingsnxt.vercel.app/support"), rightComponent: { type: 'chevron' } },
-        { icon: { component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" }, title: "About", subtitle: "App version and information", onPress: () => openLink("https://thingsnxt.vercel.app/"), rightComponent: { type: 'chevron' } },
+        {
+          icon: { component: <HelpCircle size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          title: "Help Center",
+          subtitle: "FAQs and support articles",
+          onPress: () => openWebView("https://thingsnxt.vercel.app/support", "Help Center"),
+          rightComponent: { type: 'chevron' }
+        },
+        {
+          icon: { component: <Info size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          title: "About",
+          subtitle: "App version and information",
+          onPress: () => openWebView("https://thingsnxt.vercel.app/", "About ThingsNXT"),
+          rightComponent: { type: 'chevron' }
+        },
       ],
     },
   ];

@@ -3,15 +3,13 @@ import {
   View,
   ActivityIndicator,
   Platform,
-  Dimensions,
   StyleSheet,
   Text,
 } from "react-native";
-import { NavigationContainer, DefaultTheme, DarkTheme } from "@react-navigation/native";
+import { NavigationContainer, DefaultTheme, DarkTheme, useTheme } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { COLORS } from "./theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./context/AuthContext";
 
@@ -28,6 +26,7 @@ import SettingsScreen from "./screens/SettingsScreen";
 import HomeScreen from "./screens/HomeScreen";
 import DashboardScreen from "./screens/DashboardScreen";
 import ProfileScreen from "./screens/ProfileScreen";
+import WebViewScreen from './screens/WebViewScreen'; // 👈 Import the new screen
 
 
 import CustomAlert from "./components/CustomAlert";
@@ -36,7 +35,32 @@ const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
-  const insets = useSafeAreaInsets();
+  const { colors, dark: isDarkTheme } = useTheme(); // Get theme colors and dark mode status
+
+  // Create a theme-aware color palette for the tab bar
+  const TabBarColors = React.useMemo(() => ({
+    active: colors.primary,
+    inactive: colors.text, // Using theme's text color for inactive tabs
+    background: colors.card,
+  }), [colors.primary, colors.text, colors.card]);
+
+  // Create a memoized, theme-aware style for the tab bar
+  const tabBarStyle = React.useMemo(() => ({
+    position: "absolute",
+    bottom: 25,
+    left: 20,
+    right: 20,
+    elevation: 5,
+    backgroundColor: TabBarColors.background,
+    borderRadius: 15,
+    height: 70,
+    paddingBottom: 8,
+    // Theme-aware shadow
+    shadowColor: isDarkTheme ? colors.primary : '#171717',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDarkTheme ? 0.3 : 0.1,
+    shadowRadius: 4,
+  }), [TabBarColors.background, colors.primary, isDarkTheme]);
 
   return (
     <Tab.Navigator
@@ -113,22 +137,11 @@ function MainTabs() {
           return <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{route.name}</Text>;
         },
 
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: "black",
+        tabBarActiveTintColor: TabBarColors.active,
+        tabBarInactiveTintColor: TabBarColors.inactive,
 
         // TAB BAR STYLE
-        tabBarStyle: {
-          position: "absolute",
-          bottom: 25,
-          left: 20,
-          right: 20,
-          elevation: 5,
-          backgroundColor: COLORS.card,
-          borderRadius: 15,
-          height: 70,
-          paddingBottom: 8,
-          ...styles.shadow,
-        },
+        tabBarStyle: tabBarStyle,
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -145,32 +158,21 @@ function AppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={MainTabs} />
-      <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal' }} />
-      <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, presentation: 'modal' }} />
     </Stack.Navigator>
   );
 }
 
 export default function RootNavigator() {
-  const { userToken, loading, isDarkTheme, alertVisible, alertConfig } = useAuth();
-
-  if (loading) {
-    return (
-      <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#007aff" />
-      </View>
-    );
-  }
+  const { userToken, isDarkTheme, alertVisible, alertConfig } = useAuth();
 
   return (
-    <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: COLORS.background }}}>
+    <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: '#F1F5F9' }}}>
       <>
         <Stack.Navigator screenOptions={{ 
           headerStyle: {
-            backgroundColor: COLORS.card,
+            backgroundColor: isDarkTheme ? '#1A1F3A' : '#FFFFFF',
           },
-          headerTintColor: COLORS.text,
+          headerTintColor: isDarkTheme ? '#FFFFFF' : '#1E293B',
           headerTitleStyle: {
             fontWeight: 'bold',
           },
@@ -179,13 +181,28 @@ export default function RootNavigator() {
           {userToken ? (
             <>
               <Stack.Screen name="App" component={AppStack} options={{ headerShown: false }}/>
+              {/* Modal and Detail Screens - Moved to the root stack for global access */}
+              <Stack.Screen name="DeviceDetail" component={DeviceDetailScreen} options={{ headerShown: true, presentation: 'modal'}} />
+              <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: true, presentation: 'modal' }} />
+               <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{headerShown:false}} /> 
+              <Stack.Screen 
+                name="WebView" 
+                component={WebViewScreen} 
+                options={{ 
+                  headerShown: false,
+                  headerBackTitleVisible: false,
+                  presentation: "transparentModal", // enables custom bottom‑sheet style
+                  animation: "slide_from_bottom",   // nicer bottom‑up animation
+                }} 
+              />
             </>
           ) : (
             <>
-              <Stack.Screen name="Login" component={LoginScreen} />
-              <Stack.Screen name="Signup" component={SignupScreen} />
-              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} options={{headerShown:false,headerBackTitleVisible:false,presentation: 'transparentModal', animation: 'slide_from_bottom',}}  />
+              <Stack.Screen name="Signup" component={SignupScreen} options={{headerShown:false,headerBackTitleVisible:false,presentation: 'transparentModal', animation: 'slide_from_bottom',}} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} options={{headerShown:false,headerBackTitleVisible:false,presentation: 'transparentModal', animation: 'slide_from_bottom',}} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} options={{headerShown:false,headerBackTitleVisible:false,presentation: 'transparentModal', animation: 'slide_from_bottom',}} />
             </>
           )}
         </Stack.Navigator>
@@ -205,12 +222,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
-  },
-  shadow: {
-    shadowColor: '#171717',
-    shadowOffset: {width: -2, height: 4},
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
   },
   tabBar: {
     position: "absolute",
