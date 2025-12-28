@@ -25,6 +25,7 @@ import {
   Database, // For Data Export
   Trash2,   // For Clear Cache
   Palette,  // For Appearance
+  Check,
 } from "lucide-react-native";
 import { LayoutDashboard } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
@@ -39,13 +40,15 @@ export default function SettingsScreen() {
     email,
     isDarkTheme,
     showAlert,
-    toggleTheme,
+    themePreference,
+    setThemePreference,
   } = useContext(AuthContext);
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   const [isExportModalVisible, setExportModalVisible] = useState(false);
+  const [isThemeModalVisible, setThemeModalVisible] = useState(false);
   const [selectedRange, setSelectedRange] = useState("7d");
   const [isExporting, setIsExporting] = useState(false);
 
@@ -126,6 +129,11 @@ export default function SettingsScreen() {
     navigation.navigate("Dashboards");
   };
 
+  const handleThemeSelect = (mode) => {
+    setThemePreference(mode);
+    setThemeModalVisible(false);
+  };
+
   // ⭐ Refactored Menu Structure
   const menuSections = [
     {
@@ -179,8 +187,9 @@ export default function SettingsScreen() {
         {
           icon: { component: <Palette size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
           title: "Appearance",
-          subtitle: isDarkTheme ? "Dark Mode" : "Light Mode",
-          rightComponent: { type: 'switch', value: isDarkTheme, onValueChange: toggleTheme, trackColor: Colors.primary },
+          subtitle: themePreference === 'system' ? "System Default" : (isDarkTheme ? "Dark Mode" : "Light Mode"),
+          onPress: () => setThemeModalVisible(true),
+          rightComponent: { type: 'chevron' },
         },
       ],
     },
@@ -333,6 +342,50 @@ export default function SettingsScreen() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Theme Selection Modal */}
+      <Modal
+        visible={isThemeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setThemeModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Appearance</Text>
+            
+            <View style={{ gap: 8, marginBottom: 20 }}>
+              {[
+                { id: 'system', label: 'System Default' },
+                { id: 'light', label: 'Light Mode' },
+                { id: 'dark', label: 'Dark Mode' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.rangeOption, 
+                    { flexDirection: 'row', justifyContent: 'space-between', borderColor: Colors.border, backgroundColor: Colors.surfaceLight },
+                    themePreference === option.id && { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' }
+                  ]}
+                  onPress={() => handleThemeSelect(option.id)}
+                >
+                  <Text style={[styles.rangeText, { color: Colors.text }, themePreference === option.id && { color: Colors.primary }]}>
+                    {option.label}
+                  </Text>
+                  {themePreference === option.id && <Check size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+              onPress={() => setThemeModalVisible(false)}
+            >
+              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

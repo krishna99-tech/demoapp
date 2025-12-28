@@ -12,6 +12,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./context/AuthContext";
+import { StatusBar } from "expo-status-bar";
 
 // Screens
 import LoginScreen from "./screens/LoginScreen";
@@ -168,6 +169,7 @@ export default function RootNavigator() {
   return (
     <NavigationContainer theme={isDarkTheme ? DarkTheme : { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: '#F1F5F9' }}}>
       <>
+        <StatusBar style={isDarkTheme ? "light" : "dark"} />
         <Stack.Navigator screenOptions={{ 
           headerStyle: {
             backgroundColor: isDarkTheme ? '#1A1F3A' : '#FFFFFF',

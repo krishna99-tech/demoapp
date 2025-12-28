@@ -6,12 +6,11 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BASE_URL, WS_URL } from "../constants/config";
 import API from "../services/api";
-import { color } from "framer-motion";
 
 export const AuthContext = createContext(null);
 
@@ -28,12 +27,14 @@ export const useAuth = () => {
 // 🌐 Auth Provider
 // ====================================
 export const AuthProvider = ({ children }) => {
+  const systemScheme = useColorScheme();
   const [userToken, setUserToken] = useState(null);
   const [username, setUsername] = useState(null);
   const [email, setEmail] = useState(null);
   const [user, setUser] = useState(null); // Add state for the full user object
   const [devices, setDevices] = useState([]);
-  const [isDarkTheme, setIsDarkTheme] = useState(true);
+  const [themePreference, setThemePreferenceState] = useState('system');
+  const [isDarkTheme, setIsDarkTheme] = useState(systemScheme === 'dark');
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -53,10 +54,19 @@ export const AuthProvider = ({ children }) => {
         const storedUser = await AsyncStorage.getItem("username");
         const storedEmail = await AsyncStorage.getItem("email");
         const storedFullUser = await AsyncStorage.getItem("user");
-        const storedTheme = await AsyncStorage.getItem("theme");
+        const storedThemePref = await AsyncStorage.getItem("themePreference");
+        const legacyTheme = await AsyncStorage.getItem("theme");
 
-        if (storedTheme) {
-          setIsDarkTheme(storedTheme === "dark");
+        if (storedThemePref) {
+          setThemePreferenceState(storedThemePref);
+          // Update isDarkTheme immediately to match preference and prevent flash
+          if (storedThemePref !== 'system') {
+            setIsDarkTheme(storedThemePref === 'dark');
+          }
+        } else if (legacyTheme) {
+          const pref = legacyTheme === 'dark' ? 'dark' : 'light';
+          setThemePreferenceState(pref);
+          setIsDarkTheme(pref === 'dark');
         }
         if (storedFullUser) setUser(JSON.parse(storedFullUser));
 
@@ -75,6 +85,15 @@ export const AuthProvider = ({ children }) => {
     };
     init();
   }, []);
+
+  // Update active theme when preference or system scheme changes
+  useEffect(() => {
+    if (themePreference === 'system') {
+      setIsDarkTheme(systemScheme === 'dark');
+    } else {
+      setIsDarkTheme(themePreference === 'dark');
+    }
+  }, [themePreference, systemScheme]);
 
   const showAlert = (config) => {
     setAlertConfig({
@@ -238,13 +257,12 @@ export const AuthProvider = ({ children }) => {
   // ====================================
   // 🌗 THEME
   // ====================================
-  const toggleTheme = async () => {
+  const setThemePreference = async (pref) => {
+    setThemePreferenceState(pref);
     try {
-      const newTheme = !isDarkTheme;
-      setIsDarkTheme(newTheme);
-      await AsyncStorage.setItem("theme", newTheme ? "dark" : "light");
+      await AsyncStorage.setItem("themePreference", pref);
     } catch (err) {
-      console.error("Failed to save theme:", err);
+      console.error("Failed to save theme preference:", err);
       showAlert({
         type: 'error', title: "Error", message: "Could not save theme preference.", buttons: [{ text: "OK" }]
       });
@@ -825,7 +843,8 @@ const connectWebSocket = (token) => {
           signup,
           logout,
           isDarkTheme,
-          toggleTheme, // Use the new function
+          themePreference,
+          setThemePreference,
           loading,
           isRefreshing,
           lastUpdated,
