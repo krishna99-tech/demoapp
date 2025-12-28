@@ -23,6 +23,7 @@ import MemoizedDashboardWidget from "../components/dashboard/MemoizedDashboardWi
 
 import WidgetRenderer from "../components/widgets/WidgetRenderer";
 import AddLedWidgetModal from "../components/dashboard/AddLedWidgetModal";
+import EditWidgetModal from "../components/dashboard/EditWidgetModal";
 import CustomAlert from "../components/CustomAlert";
 import WidgetSkeleton from "../components/WidgetSkeleton";
 import { showToast } from "../components/Toast";
@@ -44,6 +45,8 @@ function DashboardContent({ route, navigation }) {
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const [addLedModalVisible, setAddLedModalVisible] = useState(false);
+  const [editWidgetModalVisible, setEditWidgetModalVisible] = useState(false);
+  const [selectedWidget, setSelectedWidget] = useState(null);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   const insets = useSafeAreaInsets();
@@ -145,6 +148,9 @@ function DashboardContent({ route, navigation }) {
   }, []);
 
   const handleWidgetLongPress = useCallback((widgetId) => {
+    // Find the widget to edit
+    const widget = widgets.find(w => String(w._id) === String(widgetId));
+    
     setAlertConfig({
       type: 'confirm',
       title: "Widget Options",
@@ -153,8 +159,10 @@ function DashboardContent({ route, navigation }) {
         { text: "Cancel", style: "cancel", onPress: () => setAlertVisible(false) },
         { text: "Edit", onPress: () => {
             setAlertVisible(false);
-            console.log("Edit widget:", widgetId);
-            showToast.info("Coming Soon!", "Editing widgets will be available in a future update.");
+            if (widget) {
+              setSelectedWidget(widget);
+              setEditWidgetModalVisible(true);
+            }
           }
         },
         { text: "Delete", style: "destructive", onPress: () => {
@@ -165,7 +173,7 @@ function DashboardContent({ route, navigation }) {
       ]
     });
     setAlertVisible(true);
-  }, [handleDeleteWidget]);
+  }, [handleDeleteWidget, widgets]);
 
   const handleSaveLayout = useCallback(async () => {
     if (!hasChanges) {
@@ -322,6 +330,17 @@ function DashboardContent({ route, navigation }) {
         onClose={() => setAddLedModalVisible(false)}
         dashboardId={dashboard._id}
         onWidgetAdded={fetchWidgets} // Refetch widgets after one is added
+        themeStyles={themeStyles}
+      />
+
+      <EditWidgetModal
+        visible={editWidgetModalVisible}
+        onClose={() => {
+          setEditWidgetModalVisible(false);
+          setSelectedWidget(null);
+        }}
+        widget={selectedWidget}
+        onWidgetUpdated={fetchWidgets} // Refetch widgets after update
         themeStyles={themeStyles}
       />
 

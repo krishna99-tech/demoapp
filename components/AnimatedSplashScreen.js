@@ -11,11 +11,21 @@ SplashScreen.preventAutoHideAsync();
 
 // Pre-load any assets you need for the splash screen or initial app load
 const loadAssetsAsync = async () => {
-  const images = [require('../assets/icon.png')]; // Example: your app icon
-  const cacheImages = images.map(image => {
-    return Asset.fromModule(image).downloadAsync();
-  });
-  return Promise.all(cacheImages);
+  try {
+    const images = [require('../assets/icon.png')]; // Example: your app icon
+    const cacheImages = images.map(image => {
+      try {
+        return Asset.fromModule(image).downloadAsync();
+      } catch (err) {
+        console.warn('Failed to load asset:', err);
+        return Promise.resolve(); // Continue even if asset fails
+      }
+    });
+    await Promise.all(cacheImages);
+  } catch (err) {
+    console.warn('Asset loading error:', err);
+    // Don't throw - allow app to continue even if assets fail
+  }
 };
 
 export default function AnimatedSplashScreen({ children }) {
@@ -31,7 +41,8 @@ export default function AnimatedSplashScreen({ children }) {
         await loadAssetsAsync();
         // Any other pre-loading tasks can go here
       } catch (e) {
-        console.warn(e);
+        console.warn('Splash screen preparation error:', e);
+        // Continue even if asset loading fails
       } finally {
         // We are not setting app ready here, we wait for auth to finish
       }

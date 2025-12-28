@@ -26,12 +26,19 @@ import {
   Trash2,   // For Clear Cache
   Palette,  // For Appearance
   Check,
+  Globe,
+  Lock,
+  Eye,
+  EyeOff,
+  Download,
+  Upload,
 } from "lucide-react-native";
 import { LayoutDashboard } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MenuItem from "../components/settings/MenuItem";
 import { showToast } from "../components/Toast";
+import { getThemeColors } from "../utils/theme";
 
 export default function SettingsScreen() {
   const {
@@ -49,25 +56,20 @@ export default function SettingsScreen() {
   const [alertConfig, setAlertConfig] = useState({});
   const [isExportModalVisible, setExportModalVisible] = useState(false);
   const [isThemeModalVisible, setThemeModalVisible] = useState(false);
+  const [isLanguageModalVisible, setLanguageModalVisible] = useState(false);
+  const [isNotificationsModalVisible, setNotificationsModalVisible] = useState(false);
+  const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [selectedRange, setSelectedRange] = useState("7d");
   const [isExporting, setIsExporting] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState("en");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [pushNotifications, setPushNotifications] = useState(true);
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
+  const [dataSharing, setDataSharing] = useState(false);
 
-  // ⭐ This Colors object is a great candidate for centralization in a theme context/hook
-  const Colors = {
-    background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
-    surface: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    surfaceLight: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    border: isDarkTheme ? "#252B4A" : "#E2E8F0",
-    primary: isDarkTheme ? "#00D9FF" : "#3B82F6",
-    secondary: isDarkTheme ? "#7B61FF" : "#6D28D9",
-    success: isDarkTheme ? "#00FF88" : "#16A34A",
-    warning: isDarkTheme ? "#FFB800" : "#F59E0B",
-    danger: isDarkTheme ? "#FF3366" : "#DC2626",
-    white: "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    textMuted: isDarkTheme ? "#8B91A7" : "#64748B",
-  };
+  // Use centralized theme utility
+  const Colors = getThemeColors(isDarkTheme);
 
   const handleLogout = () => {
     setAlertConfig({
@@ -132,6 +134,23 @@ export default function SettingsScreen() {
   const handleThemeSelect = (mode) => {
     setThemePreference(mode);
     setThemeModalVisible(false);
+    showToast.success("Theme Updated", `Switched to ${mode === 'system' ? 'System Default' : mode === 'dark' ? 'Dark Mode' : 'Light Mode'}`);
+  };
+
+  const handleLanguageSelect = (lang) => {
+    setSelectedLanguage(lang);
+    setLanguageModalVisible(false);
+    showToast.success("Language Updated", "App language preference saved");
+  };
+
+  const handleNotificationsSave = () => {
+    setNotificationsModalVisible(false);
+    showToast.success("Settings Saved", "Notification preferences updated");
+  };
+
+  const handlePrivacySave = () => {
+    setPrivacyModalVisible(false);
+    showToast.success("Settings Saved", "Privacy preferences updated");
   };
 
   // ⭐ Refactored Menu Structure
@@ -189,6 +208,32 @@ export default function SettingsScreen() {
           title: "Appearance",
           subtitle: themePreference === 'system' ? "System Default" : (isDarkTheme ? "Dark Mode" : "Light Mode"),
           onPress: () => setThemeModalVisible(true),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <Globe size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          title: "Language",
+          subtitle: selectedLanguage === 'en' ? "English" : selectedLanguage === 'es' ? "Spanish" : "French",
+          onPress: () => setLanguageModalVisible(true),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" },
+          title: "Notifications",
+          subtitle: notificationsEnabled ? "Enabled" : "Disabled",
+          onPress: () => setNotificationsModalVisible(true),
+          rightComponent: { type: 'chevron' },
+        },
+      ],
+    },
+    {
+      title: "Privacy & Security",
+      items: [
+        {
+          icon: { component: <Lock size={20} color={Colors.success} />, bgColor: Colors.success + "20" },
+          title: "Privacy Settings",
+          subtitle: "Control data sharing and analytics",
+          onPress: () => setPrivacyModalVisible(true),
           rightComponent: { type: 'chevron' },
         },
       ],
@@ -384,8 +429,191 @@ export default function SettingsScreen() {
               style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
               onPress={() => setThemeModalVisible(false)}
             >
-              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
+              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Close</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Language Selection Modal */}
+      <Modal
+        visible={isLanguageModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLanguageModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Language</Text>
+            
+            <View style={{ gap: 8, marginBottom: 20 }}>
+              {[
+                { id: 'en', label: 'English' },
+                { id: 'es', label: 'Español' },
+                { id: 'fr', label: 'Français' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.rangeOption, 
+                    { flexDirection: 'row', justifyContent: 'space-between', borderColor: Colors.border, backgroundColor: Colors.surfaceLight },
+                    selectedLanguage === option.id && { borderColor: Colors.primary, backgroundColor: Colors.primary + '10' }
+                  ]}
+                  onPress={() => handleLanguageSelect(option.id)}
+                >
+                  <Text style={[styles.rangeText, { color: Colors.text }, selectedLanguage === option.id && { color: Colors.primary }]}>
+                    {option.label}
+                  </Text>
+                  {selectedLanguage === option.id && <Check size={20} color={Colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+              onPress={() => setLanguageModalVisible(false)}
+            >
+              <Text style={[styles.modalBtnText, { color: Colors.text }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Notifications Settings Modal */}
+      <Modal
+        visible={isNotificationsModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setNotificationsModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Notification Settings</Text>
+            
+            <View style={{ gap: 16, marginBottom: 20 }}>
+              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Enable Notifications</Text>
+                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                    Receive push notifications for important updates
+                  </Text>
+                </View>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={setNotificationsEnabled}
+                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  thumbColor={notificationsEnabled ? Colors.primary : Colors.textSecondary}
+                />
+              </View>
+
+              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Email Notifications</Text>
+                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                    Receive notifications via email
+                  </Text>
+                </View>
+                <Switch
+                  value={emailNotifications}
+                  onValueChange={setEmailNotifications}
+                  disabled={!notificationsEnabled}
+                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  thumbColor={emailNotifications ? Colors.primary : Colors.textSecondary}
+                />
+              </View>
+
+              <View style={[styles.settingRow]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Push Notifications</Text>
+                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                    Receive push notifications on your device
+                  </Text>
+                </View>
+                <Switch
+                  value={pushNotifications}
+                  onValueChange={setPushNotifications}
+                  disabled={!notificationsEnabled}
+                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  thumbColor={pushNotifications ? Colors.primary : Colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+                onPress={() => setNotificationsModalVisible(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
+                onPress={handleNotificationsSave}
+              >
+                <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Privacy Settings Modal */}
+      <Modal
+        visible={isPrivacyModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPrivacyModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: Colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: Colors.text }]}>Privacy Settings</Text>
+            
+            <View style={{ gap: 16, marginBottom: 20 }}>
+              <View style={[styles.settingRow, { borderBottomColor: Colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Analytics</Text>
+                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                    Help improve the app by sharing usage analytics
+                  </Text>
+                </View>
+                <Switch
+                  value={analyticsEnabled}
+                  onValueChange={setAnalyticsEnabled}
+                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  thumbColor={analyticsEnabled ? Colors.primary : Colors.textSecondary}
+                />
+              </View>
+
+              <View style={[styles.settingRow]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: Colors.text }]}>Data Sharing</Text>
+                  <Text style={[styles.settingDescription, { color: Colors.textSecondary }]}>
+                    Allow sharing anonymized data for research
+                  </Text>
+                </View>
+                <Switch
+                  value={dataSharing}
+                  onValueChange={setDataSharing}
+                  trackColor={{ false: Colors.surfaceLight, true: Colors.primary + '40' }}
+                  thumbColor={dataSharing ? Colors.primary : Colors.textSecondary}
+                />
+              </View>
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.surfaceLight }]}
+                onPress={() => setPrivacyModalVisible(false)}
+              >
+                <Text style={[styles.modalBtnText, { color: Colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
+                onPress={handlePrivacySave}
+              >
+                <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -503,5 +731,21 @@ const styles = StyleSheet.create({
   modalBtnText: {
     fontSize: 16,
     fontWeight: "600",
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

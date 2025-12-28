@@ -1,24 +1,14 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Toast from "react-native-toast-message";
 import { CheckCircle, XCircle, Info } from "lucide-react-native";
 import { AuthContext } from "../context/AuthContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getToastColors } from "../utils/theme";
 
 const CustomToast = ({ text1, text2, type, props }) => {
   const { isDarkTheme } = props;
-
-  const Colors = {
-    card: isDarkTheme ? "#1A1F3A" : "#FFFFFF",
-    text: isDarkTheme ? "#FFFFFF" : "#1E293B",
-    textSecondary: isDarkTheme ? "#8B91A7" : "#64748B",
-    success: "#28a745",
-    error: "#dc3545",
-    info: "#17a2b8",
-    successBg: isDarkTheme ? "rgba(40, 167, 69, 0.2)" : "#eafaf1",
-    errorBg: isDarkTheme ? "rgba(220, 53, 69, 0.2)" : "#fdeded",
-    infoBg: isDarkTheme ? "rgba(23, 162, 184, 0.2)" : "#ecf6fb",
-  };
+  const Colors = getToastColors(isDarkTheme);
 
   const ICONS = {
     success: <CheckCircle size={24} color={Colors.success} />,
@@ -73,6 +63,9 @@ const toastConfig = {
   ),
 };
 
+// Store the current theme for toast calls that don't provide it
+let currentTheme = false;
+
 export function showToast({
   type = "success",
   text1 = "",
@@ -82,9 +75,11 @@ export function showToast({
   isDarkTheme,
   ...rest
 }) {
+  // Use provided theme or fall back to stored theme
+  const theme = isDarkTheme !== undefined ? isDarkTheme : currentTheme;
   Toast.show({
     type,
-    props: { isDarkTheme },
+    props: { isDarkTheme: theme },
     text1,
     text2,
     position,
@@ -102,6 +97,11 @@ showToast.info = (text1, text2, opts = {}) =>
 export default function ToastWrapper() {
   const { isDarkTheme } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
+
+  // Update the stored theme whenever it changes
+  useEffect(() => {
+    currentTheme = isDarkTheme;
+  }, [isDarkTheme]);
 
   return (
     <Toast

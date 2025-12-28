@@ -173,9 +173,9 @@ class API {
   async refreshToken() {
     const refresh = await AsyncStorage.getItem("refreshToken");
     if (!refresh) throw new Error("No refresh token stored");
-    const data = await this.request("/refresh", {
+    // Backend expects refresh_token as query parameter
+    const data = await this.request(`/refresh?refresh_token=${encodeURIComponent(refresh)}`, {
       method: "POST",
-      body: JSON.stringify({ refresh_token: refresh }),
     });
     if (data?.access_token) {
       debugLog("♻️ Token refreshed");
@@ -225,6 +225,19 @@ class API {
     });
   }
 
+  async bulkUpdateDeviceStatus(deviceIds, status) {
+    if (!Array.isArray(deviceIds) || deviceIds.length === 0) {
+      throw new Error("Device IDs array is required");
+    }
+    if (!["online", "offline"].includes(status)) {
+      throw new Error("Status must be 'online' or 'offline'");
+    }
+    return this.request("/devices/bulk/status", {
+      method: "PATCH",
+      body: JSON.stringify({ device_ids: deviceIds, status }),
+    });
+  }
+
   async deleteDevice(deviceId) {
     return this.request(`/devices/${deviceId}`, { method: "DELETE" });
   }
@@ -260,6 +273,13 @@ class API {
   async addWidget(widgetData) {
     return this.request("/widgets", {
       method: "POST",
+      body: JSON.stringify(widgetData),
+    });
+  }
+
+  async updateWidget(widgetId, widgetData) {
+    return this.request(`/widgets/${widgetId}`, {
+      method: "PATCH",
       body: JSON.stringify(widgetData),
     });
   }
@@ -317,6 +337,33 @@ class API {
 
   async deleteNotification(notificationId) {
     return this.request(`/notifications/${notificationId}`, { method: "DELETE" });
+  }
+
+  // WEBHOOKS
+  async getWebhooks() {
+    return this.request("/webhooks", { method: "GET" });
+  }
+
+  async getWebhook(webhookId) {
+    return this.request(`/webhooks/${webhookId}`, { method: "GET" });
+  }
+
+  async createWebhook(webhookData) {
+    return this.request("/webhooks", {
+      method: "POST",
+      body: JSON.stringify(webhookData),
+    });
+  }
+
+  async updateWebhook(webhookId, webhookData) {
+    return this.request(`/webhooks/${webhookId}`, {
+      method: "PATCH",
+      body: JSON.stringify(webhookData),
+    });
+  }
+
+  async deleteWebhook(webhookId) {
+    return this.request(`/webhooks/${webhookId}`, { method: "DELETE" });
   }
 
   // --- Private SSE Stream Handler ---
@@ -405,31 +452,39 @@ class API {
     return this.request("/me", { method: "DELETE" });
   }
 
-// Add this in your API class
-async forgotPassword(email) {
-  if (!email?.trim()) throw new Error("Enter your email.");
-  const res = await this.request("/forgot-password", {
-    method: "POST",
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
-    headers: { "Content-Type": "application/json" },
-  });
-  return res;
-}
+  // FORGOT PASSWORD
+  async forgotPassword(email) {
+    if (!email?.trim()) throw new Error("Enter your email.");
+    const res = await this.request("/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      headers: { "Content-Type": "application/json" },
+    });
+    return res;
+  }
+
+  // VERIFY RESET TOKEN
+  async verifyResetToken(token) {
+    if (!token?.trim()) throw new Error("Reset token required.");
+    const res = await this.request(`/verify-reset-token?token=${encodeURIComponent(token.trim().toUpperCase())}`, {
+      method: "GET",
+    });
+    return res;
+  }
 
 
 
-// Add this to your API class in api.js
-
-async resetPassword(token, new_password) {
-  if (!token?.trim()) throw new Error("Reset code required.");
-  if (!new_password?.trim() || new_password.length < 8) throw new Error("Password must be at least 8 characters.");
-  const res = await this.request("/reset-password", {
-    method: "POST",
-    body: JSON.stringify({ token: token.trim().toUpperCase(), new_password: new_password.trim() }),
-    headers: { "Content-Type": "application/json" },
-  });
-  return res;
-}
+  // RESET PASSWORD
+  async resetPassword(token, new_password) {
+    if (!token?.trim()) throw new Error("Reset code required.");
+    if (!new_password?.trim() || new_password.length < 8) throw new Error("Password must be at least 8 characters.");
+    const res = await this.request("/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token: token.trim().toUpperCase(), new_password: new_password.trim() }),
+      headers: { "Content-Type": "application/json" },
+    });
+    return res;
+  }
 
 
 

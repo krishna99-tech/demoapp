@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { CheckCircle, XCircle, AlertTriangle, HelpCircle, Info } from 'lucide-react-native';
+import { getModalColors } from '../utils/theme';
 
 const ICONS = {
   success: (color) => <CheckCircle size={48} color={color} />,
@@ -27,11 +28,7 @@ const CustomAlert = ({
   isDarkTheme,
 }) => {
   const ThemeColors = {
-    background: isDarkTheme ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)',
-    card: isDarkTheme ? '#1A1F3A' : '#FFFFFF',
-    title: isDarkTheme ? '#FFFFFF' : '#1E293B',
-    message: isDarkTheme ? '#8B91A7' : '#64748B',
-    buttonText: isDarkTheme ? '#FFFFFF' : '#1E293B',
+    ...getModalColors(isDarkTheme),
     primaryButton: '#3B82F6',
     primaryButtonText: '#FFFFFF',
     destructiveButton: '#DC2626',
@@ -47,12 +44,12 @@ const CustomAlert = ({
       color: ThemeColors.primaryButtonText,
     },
     cancel: {
-      backgroundColor: isDarkTheme ? ThemeColors.surfaceLight : '#E2E8F0',
+      backgroundColor: ThemeColors.surfaceLight,
       color: ThemeColors.buttonText,
     },
     // Default style for any unrecognized button style
     default: {
-      backgroundColor: isDarkTheme ? ThemeColors.surfaceLight : '#E2E8F0',
+      backgroundColor: ThemeColors.surfaceLight,
       color: ThemeColors.buttonText,
     },
   };

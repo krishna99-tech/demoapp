@@ -40,6 +40,8 @@ export const DashboardProvider = ({ children, dashboardId }) => {
         key: w._id?.toString(),
         width: w.width || 1,
         height: w.height || 1,
+        // Ensure virtual_pin is accessible both ways (flattened and nested)
+        virtual_pin: w.virtual_pin || w.config?.virtual_pin,
       })).filter(w => w.type !== "led" || w.device_token);
 
       if (mountedRef.current) {

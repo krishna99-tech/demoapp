@@ -24,6 +24,7 @@ const AddLedWidgetModal = ({
   const { devices, showAlert } = useContext(AuthContext);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [ledLabel, setLedLabel] = useState('');
+  const [virtualPin, setVirtualPin] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const availableDevices = useMemo(
@@ -53,12 +54,32 @@ const AddLedWidgetModal = ({
 
     try {
       setIsCreating(true);
+      
+      // Prepare config with optional virtual_pin
+      const config = {};
+      if (virtualPin?.trim()) {
+        // Validate virtual pin format: v followed by digits
+        const pinValue = virtualPin.trim().toLowerCase();
+        if (!/^v\d+$/.test(pinValue)) {
+          showAlert({
+            type: 'warning',
+            title: 'Invalid Virtual Pin',
+            message: 'Virtual pin must be in format v0, v1, v2, etc. (e.g., v0, v1, v2)',
+            buttons: [{ text: 'OK' }],
+          });
+          setIsCreating(false);
+          return;
+        }
+        config.virtual_pin = pinValue;
+      }
+      
       const newWidgetData = await api.addWidget({
         dashboard_id: dashboardId,
         device_id: selectedDeviceId,
         type: 'led',
         label: ledLabel?.trim() || 'LED Control',
         value: 0,
+        config: Object.keys(config).length > 0 ? config : undefined,
       });
 
       if (newWidgetData) {
@@ -74,8 +95,9 @@ const AddLedWidgetModal = ({
     } finally {
       setIsCreating(false);
       setLedLabel(''); // Reset label for next time
+      setVirtualPin(''); // Reset virtual pin for next time
     }
-  }, [selectedDeviceId, isCreating, dashboardId, ledLabel, onWidgetAdded, onClose, showAlert]);
+  }, [selectedDeviceId, isCreating, dashboardId, ledLabel, virtualPin, onWidgetAdded, onClose, showAlert]);
 
   return (
     <Modal
@@ -130,6 +152,22 @@ const AddLedWidgetModal = ({
             onChangeText={setLedLabel}
           />
 
+          <Text style={[styles.modalLabel, themeStyles.modalLabel]}>
+            Virtual Pin (Optional)
+          </Text>
+          <TextInput
+            style={[styles.input, themeStyles.input]}
+            placeholder="v0, v1, v2, etc. (auto-assigned if empty)"
+            placeholderTextColor={themeStyles.input.color + '80'}
+            value={virtualPin}
+            onChangeText={(text) => setVirtualPin(text.toLowerCase())}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={[styles.hint, themeStyles.modalSubtitle]}>
+            Leave empty to auto-assign the next available pin. Format: v followed by number (e.g., v0, v1, v2)
+          </Text>
+
           <View style={styles.modalButtons}>
             <TouchableOpacity
               style={[styles.modalBtn, styles.modalCancel]}
@@ -167,6 +205,7 @@ const styles = StyleSheet.create({
   deviceName: { fontWeight: "600" },
   deviceToken: { fontSize: 12, marginTop: 4 },
   input: { borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 14 },
+  hint: { fontSize: 12, marginTop: 4, fontStyle: 'italic' },
   modalButtons: { flexDirection: "row", justifyContent: "flex-end", gap: 12, marginTop: 18 },
   modalBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
   modalCancel: { backgroundColor: "#e2e8f0" },

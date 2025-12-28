@@ -1,13 +1,15 @@
-// ProfileInfoRow.jsx - FULLY EDITABLE VERSION
-import React from 'react';
+// ProfileInfoRow.jsx - WhatsApp/Modern Profile Row
+import React, { useState } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
   TouchableOpacity, 
-  TextInput 
+  TextInput, 
+  Platform, 
+  Pressable,
 } from 'react-native';
-import { ChevronRight } from 'lucide-react-native';
+import { ChevronRight, Eye, EyeOff } from 'lucide-react-native';
 
 // Safe hex + opacity utility
 const alpha = (hex, opacity) => {
@@ -23,8 +25,17 @@ const ProfileInfoRow = ({
   isEditing = false,
   onChangeText,
   placeholder,
-  onPress
+  onPress,
+  keyboardType = "default",
+  autoCapitalize = "none",
+  multiline = false,
+  numberOfLines = 1,
+  secureTextEntry = false,
+  maxLength,
+  editable = true,
 }) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPasswordField = secureTextEntry && isEditing;
   // Read-only mode (clickable)
   if (!isEditing) {
     return (
@@ -86,61 +97,115 @@ const ProfileInfoRow = ({
         <Text style={[styles.infoLabel, { color: Colors.textMuted }]}>
           {label}
         </Text>
-        <TextInput
-          style={[
-            styles.inputField,
-            { 
-              color: Colors.text,
-              backgroundColor: Colors.surfaceLight,
-              borderColor: Colors.primary
-            }
-          ]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={Colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          selectionColor={Colors.primary}
-          clearButtonMode="never"
-        />
+        <View style={{ position: 'relative' }}>
+          <TextInput
+            style={[
+              styles.inputField,
+              multiline && styles.inputFieldMultiline,
+              isPasswordField && styles.inputFieldPassword,
+              { 
+                color: Colors.text,
+                backgroundColor: Colors.surfaceLight,
+                borderColor: Colors.primary
+              }
+            ]}
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textMuted}
+            autoCapitalize={autoCapitalize}
+            autoCorrect={false}
+            keyboardType={keyboardType}
+            multiline={multiline}
+            numberOfLines={numberOfLines}
+            textAlignVertical={multiline ? "top" : "center"}
+            selectionColor={Colors.primary}
+            clearButtonMode="never"
+            secureTextEntry={isPasswordField && !showPassword}
+            maxLength={maxLength}
+            editable={editable}
+          />
+          {isPasswordField && (
+            <TouchableOpacity
+              style={styles.passwordToggle}
+              onPress={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? (
+                <EyeOff size={18} color={Colors.textMuted} />
+              ) : (
+                <Eye size={18} color={Colors.textMuted} />
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  infoRow: { 
-    flexDirection: "row", 
+  infoRow: {
+    flexDirection: "row",
     alignItems: 'center',
+    backgroundColor: '#fff',
+    minHeight: 60,
+    paddingHorizontal: 24,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EFF0F3',
   },
-  infoIcon: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 20, 
-    alignItems: "center", 
-    justifyContent: "center", 
+  rowPressed: {
+    backgroundColor: '#F7F7FA',
+  },
+  infoIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 16,
-    borderWidth: 1,
+    backgroundColor: '#ECE5DD', // WhatsApp light icon-pill bg
   },
-  infoLabel: { 
-    fontSize: 13, 
+  infoLabel: {
+    fontSize: 13,
     fontWeight: '500',
-    marginBottom: 4 
+    color: '#667781', // WhatsApp muted label color
+    marginBottom: 3,
+    marginLeft: 2,
   },
-  infoValue: { 
-    fontSize: 16, 
-    fontWeight: "600" 
+  infoValue: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: '#222E34', // WhatsApp dark main text
+    marginBottom: 1,
+    marginLeft: 2,
   },
   inputField: {
-    fontSize: 16,
-    fontWeight: "600",
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderRadius: 8,
+    fontSize: 18,
+    fontWeight: "700",
+    backgroundColor: 'transparent',
+    borderBottomColor: '#25D366', // WhatsApp green
+    borderBottomWidth: 2,
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingTop: 12,
+    paddingBottom: 8,
+    marginHorizontal: 2,
     minHeight: 44, // Touch target
+  },
+  inputFieldMultiline: {
+    minHeight: 80,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  inputFieldPassword: {
+    paddingRight: 40,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    right: 12,
+    top: '50%',
+    transform: [{ translateY: -9 }],
+    padding: 4,
   },
 });
 

@@ -69,7 +69,9 @@ const WidgetRenderer = ({ item, isDarkTheme, onLongPress, onDelete }) => {
       break;
     case "led":
       // onDelete is handled by the edit overlay, onLongPress is passed for scheduling modals
-      props = { ...props, widgetId: item._id, deviceId: item.device_id, deviceToken: item.device_token, virtualPin: item.virtual_pin, initialState: !!item.value, nextSchedule: item.next_schedule, onLongPress: () => onLongPress(item._id) };
+      // virtual_pin can be in item.virtual_pin (flattened) or item.config.virtual_pin (nested)
+      const virtualPin = item.virtual_pin || item.config?.virtual_pin;
+      props = { ...props, widgetId: item._id, deviceId: item.device_id, deviceToken: item.device_token, virtualPin: virtualPin, initialState: !!item.value, nextSchedule: item.next_schedule, onLongPress: () => onLongPress(item._id) };
       break;
     case "chart":
       props = { ...props, deviceId: item.device_id, config: item.config, lastUpdated: item.lastUpdated };
