@@ -44,7 +44,7 @@ const ProfileInfoRow = ({
           styles.infoRow, 
           { 
             borderBottomColor: Colors.border,
-            padding: 20
+            backgroundColor: Colors.surface
           }
         ]}
         onPress={onPress}
@@ -55,21 +55,20 @@ const ProfileInfoRow = ({
           styles.infoIcon, 
           { 
             backgroundColor: alpha(Colors.primary, 0.1),
-            borderColor: alpha(Colors.primary, 0.2)
           }
         ]}>
           {icon}
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text style={[styles.infoLabel, { color: Colors.textMuted }]}>
+          <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
             {label}
           </Text>
           <Text style={[styles.infoValue, { color: Colors.text }]} numberOfLines={1}>
             {value || placeholder || 'Not set'}
           </Text>
         </View>
-        {onPress && <ChevronRight size={20} color={Colors.textMuted} />}
+        {onPress && <ChevronRight size={20} color={Colors.textSecondary} />}
       </TouchableOpacity>
     );
   }
@@ -80,21 +79,20 @@ const ProfileInfoRow = ({
       styles.infoRow, 
       { 
         borderBottomColor: Colors.border,
-        padding: 20
+        backgroundColor: Colors.surface
       }
     ]}>
       <View style={[
         styles.infoIcon, 
         { 
           backgroundColor: alpha(Colors.primary, 0.1),
-          borderColor: alpha(Colors.primary, 0.2)
         }
       ]}>
         {icon}
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={[styles.infoLabel, { color: Colors.textMuted }]}>
+        <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
           {label}
         </Text>
         <View style={{ position: 'relative' }}>
@@ -105,14 +103,13 @@ const ProfileInfoRow = ({
               isPasswordField && styles.inputFieldPassword,
               { 
                 color: Colors.text,
-                backgroundColor: Colors.surfaceLight,
-                borderColor: Colors.primary
+                borderBottomColor: Colors.primary
               }
             ]}
             value={value}
             onChangeText={onChangeText}
             placeholder={placeholder}
-            placeholderTextColor={Colors.textMuted}
+            placeholderTextColor={Colors.textSecondary}
             autoCapitalize={autoCapitalize}
             autoCorrect={false}
             keyboardType={keyboardType}
@@ -131,9 +128,9 @@ const ProfileInfoRow = ({
               onPress={() => setShowPassword(!showPassword)}
             >
               {showPassword ? (
-                <EyeOff size={18} color={Colors.textMuted} />
+                <EyeOff size={18} color={Colors.textSecondary} />
               ) : (
-                <Eye size={18} color={Colors.textMuted} />
+                <Eye size={18} color={Colors.textSecondary} />
               )}
             </TouchableOpacity>
           )}
@@ -147,49 +144,41 @@ const styles = StyleSheet.create({
   infoRow: {
     flexDirection: "row",
     alignItems: 'center',
-    backgroundColor: '#fff',
     minHeight: 60,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#EFF0F3',
   },
   rowPressed: {
-    backgroundColor: '#F7F7FA',
+    opacity: 0.7,
   },
   infoIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
-    backgroundColor: '#ECE5DD', // WhatsApp light icon-pill bg
   },
   infoLabel: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#667781', // WhatsApp muted label color
-    marginBottom: 3,
-    marginLeft: 2,
+    marginBottom: 4,
   },
   infoValue: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: '#222E34', // WhatsApp dark main text
-    marginBottom: 1,
-    marginLeft: 2,
+    fontSize: 16,
+    fontWeight: "600",
   },
   inputField: {
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 16,
+    fontWeight: "600",
     backgroundColor: 'transparent',
-    borderBottomColor: '#25D366', // WhatsApp green
     borderBottomWidth: 2,
     paddingLeft: 0,
     paddingRight: 0,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 8,
-    marginHorizontal: 2,
+    marginTop: 2,
     minHeight: 44, // Touch target
   },
   inputFieldMultiline: {

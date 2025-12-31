@@ -43,6 +43,34 @@ const { width, height } = Dimensions.get("window");
 const CARD_PADDING = 16;
 const CARD_GAP = 12;
 
+// Helper to ensure dates are treated as UTC if missing timezone info
+const parseDate = (date) => {
+  if (!date) return null;
+  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+    return new Date(date + 'Z');
+  }
+  return new Date(date);
+};
+
+const getDeviceStatus = (device) => {
+  if (!device) return "offline";
+  
+  // Check last_active with 60s threshold
+  if (device.last_active) {
+    const lastActive = parseDate(device.last_active);
+    const now = new Date();
+    const secondsSinceActive = (now - lastActive) / 1000;
+    
+    if (secondsSinceActive <= 60) {
+      return "online";
+    } else if (device.status === "online") {
+      return "offline"; // Override if stale
+    }
+  }
+  
+  return device.status || "offline";
+};
+
 const getDeviceIcon = (type, size = 24, color = "#FFFFFF") => {
   const iconProps = { size, color };
   switch (type) {
@@ -162,17 +190,19 @@ const DashboardCard = React.memo(({ dashboard, onPress, Colors }) => {
   );
 });
 
-const DeviceCard = React.memo(({ device, onPress, Colors }) => (
+const DeviceCard = React.memo(({ device, onPress, Colors }) => {
+  const status = getDeviceStatus(device);
+  return (
   <TouchableOpacity
     style={[styles.deviceCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
     onPress={() => onPress(device)}
     activeOpacity={0.7}
   >
     <View style={styles.deviceCardHeader}>
-      <View style={[styles.deviceIcon, { backgroundColor: device.status === "online" ? Colors.primary + "20" : Colors.surfaceLight }]}>
-        {getDeviceIcon(device.type, 20, device.status === 'online' ? Colors.primary : Colors.textMuted)}
+      <View style={[styles.deviceIcon, { backgroundColor: status === "online" ? Colors.primary + "20" : Colors.surfaceLight }]}>
+        {getDeviceIcon(device.type, 20, status === 'online' ? Colors.primary : Colors.textMuted)}
       </View>
-      {getStatusIcon(device.status, 14)}
+      {getStatusIcon(status, 14)}
     </View>
     <Text style={[styles.deviceName, { color: Colors.text }]} numberOfLines={1}>
       {device.name}
@@ -186,7 +216,7 @@ const DeviceCard = React.memo(({ device, onPress, Colors }) => (
       </View>
     )}
   </TouchableOpacity>
-));
+)});
 
 const Shimmer = ({ children, style, isDarkTheme }) => {
   const shimmerAnimatedValue = React.useRef(new Animated.Value(-1)).current;
@@ -323,9 +353,9 @@ export default function HomeScreen() {
 
   // 📊 Stats
   const { onlineDevices, offlineDevices, activeDevices, recentDevices } = useMemo(() => {
-    const online = devices.filter((d) => d?.status === "online").length;
-    const offline = devices.filter((d) => d?.status === "offline").length;
-    const active = devices.filter((d) => d?.status === "online" && d?.isOn).length;
+    const online = devices.filter((d) => getDeviceStatus(d) === "online").length;
+    const offline = devices.filter((d) => getDeviceStatus(d) === "offline").length;
+    const active = devices.filter((d) => getDeviceStatus(d) === "online" && d?.isOn).length;
     const recent = devices.slice(0, 4);
     return { onlineDevices: online, offlineDevices: offline, activeDevices: active, recentDevices: recent };
   }, [devices]);

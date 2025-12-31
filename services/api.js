@@ -489,10 +489,21 @@ class API {
 
 
   // TELEMETRY
-async getTelemetry(deviceToken) {
-  // Use query param, not path param:
-  return this.request(`/telemetry/latest?device_token=${deviceToken}`, { method: "GET" });
-}
+  async sendTelemetryV2(deviceId, data, deviceToken = null) {
+    // For ESP32 and other direct device -> API calls
+    // data: object with telemetry, deviceToken: optional if needed by backend
+    const body = { ...data };
+    if (deviceToken) body.device_token = deviceToken;
+    return this.request(`/devices/${deviceId}/telemetry`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async getTelemetry(deviceToken) {
+    // Use query param, not path param:
+    return this.request(`/telemetry/latest?device_token=${deviceToken}`, { method: "GET" });
+  }
 
   // This function would fetch historical data for a chart.
   // The backend would need a new endpoint like:

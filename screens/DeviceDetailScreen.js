@@ -34,12 +34,15 @@ import {
   Zap,
   Copy,
   Star,
+  FileCode,
+  Code,
 } from "lucide-react-native";
 import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
 import WidgetRenderer from "../components/widgets/WidgetRenderer";
 import DeviceDetailSkeleton from "../components/Devices/DeviceDetailSkeleton";
+import { BASE_URL } from "../constants/config";
 
 const COLORS = {
   background: "#0A0E27",
@@ -77,9 +80,18 @@ function getSensorIcon(type, size, color) {
   }
 }
 
+// Helper to ensure dates are treated as UTC if missing timezone info
+const parseDate = (date) => {
+  if (!date) return null;
+  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+    return new Date(date + 'Z');
+  }
+  return new Date(date);
+};
+
 function getTimeSince(date) {
   if (!date) return "never";
-  const seconds = Math.floor((new Date().getTime() - new Date(date).getTime()) / 1000);
+  const seconds = Math.floor((new Date().getTime() - parseDate(date).getTime()) / 1000);
 
   if (seconds < 5) return "just now";
   if (seconds < 60) return `${seconds}s ago`;
@@ -128,6 +140,10 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
   
+  // --- Code Examples Modal ---
+  const [codeModalVisible, setCodeModalVisible] = useState(false);
+  const [selectedCodeType, setSelectedCodeType] = useState('esp32'); // 'esp32' or 'python'
+  
   // --- FAVORITES (New Feature) ---
   // In a real app, this state and toggle function would come from AuthContext
   const [isFavorite, setIsFavorite] = useState(false); 
@@ -158,9 +174,41 @@ export default function DeviceDetailScreen({ route, navigation }) {
       label: key.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()),
       value: value,
       unit: key.toLowerCase().includes("temp") ? "°C" : key.toLowerCase().includes("hum") ? "%" : "",
-      timestamp: new Date(device.lastTelemetry || device.last_active || Date.now()),
+      timestamp: parseDate(device.lastTelemetry || device.last_active) || new Date(),
     }));
   }, [device]);
+
+  // Calculate device status based on last_active timestamp
+  const getDeviceStatus = useCallback((device) => {
+    if (!device) return "offline";
+    
+    // If device has explicit status, use it (but verify it's still valid)
+    if (device.status === "online" && device.last_active) {
+      const lastActive = parseDate(device.last_active);
+      const now = new Date();
+      const secondsSinceActive = (now - lastActive) / 1000;
+      
+      // Device is considered offline if last_active is more than 60 seconds ago
+      // Increased from 20s to allow for network latency and heartbeat intervals
+      if (secondsSinceActive > 60) {
+        return "offline";
+      }
+      return "online";
+    }
+    
+    // If no explicit status or status is offline, check last_active
+    if (device.last_active) {
+      const lastActive = parseDate(device.last_active);
+      const now = new Date();
+      const secondsSinceActive = (now - lastActive) / 1000;
+      
+      if (secondsSinceActive <= 60) {
+        return "online";
+      }
+    }
+    
+    return device.status || "offline";
+  }, []);
 
   const handleRefresh = useCallback(() => {
     if (!device?.device_token) return;
@@ -231,6 +279,14 @@ export default function DeviceDetailScreen({ route, navigation }) {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>
+          {/* Code Examples Button - More visible */}
+          <TouchableOpacity 
+            onPress={() => setCodeModalVisible(true)} 
+            style={[styles.headerButton, styles.codeButton]}
+            accessibilityLabel="View integration code examples"
+          >
+            <FileCode size={20} color={Colors.primary} />
+          </TouchableOpacity>
           {/* Favorite Button (New Feature) */}
           <TouchableOpacity onPress={() => setIsFavorite(!isFavorite)} style={styles.headerButton}>
             <Star size={22} color={isFavorite ? Colors.warning : Colors.primary} fill={isFavorite ? Colors.warning : 'transparent'} />
@@ -331,9 +387,12 @@ export default function DeviceDetailScreen({ route, navigation }) {
     }
   };
 
+  // Calculate actual device status based on last_active
+  const actualStatus = useMemo(() => getDeviceStatus(device), [device, getDeviceStatus]);
+  
   const statusColor =
-    device.status === "online" ? Colors.online
-    : device.status === "offline" ? Colors.offline
+    actualStatus === "online" ? Colors.online
+    : actualStatus === "offline" ? Colors.offline
     : Colors.warning;
 
   return (
@@ -358,7 +417,7 @@ export default function DeviceDetailScreen({ route, navigation }) {
               <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
                 <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                 <Text style={[styles.statusText, { color: statusColor }]}>
-                  {device.status.toUpperCase()}
+                  {actualStatus.toUpperCase()}
                 </Text>
               </View>
               <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{device.type}</Text>
@@ -395,15 +454,30 @@ export default function DeviceDetailScreen({ route, navigation }) {
 
         <View style={[styles.section]}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Access Token</Text>
+            <Text style={[styles.sectionTitle, { color: Colors.text }]}>Device ID & Access Token</Text>
           </View>
-          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
-            <Text selectable style={[styles.tokenText, { color: Colors.primary }]} numberOfLines={1} ellipsizeMode="middle">
-              {device.device_token}
-            </Text>
-            <TouchableOpacity onPress={handleCopyToken} style={{ padding: 8, marginLeft: 8, backgroundColor: `${Colors.primary}20`, borderRadius: 8 }}>
-              <Copy size={18} color={Colors.primary} />
-            </TouchableOpacity>
+          <View style={[styles.tokenCard, { backgroundColor: Colors.card, borderColor: Colors.cardBorder, flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'space-between', paddingVertical: 20, marginTop: 4, marginBottom: 12, gap: 12, elevation: 5, shadowColor: Colors.primary, shadowOpacity: 0.12, shadowRadius: 20, shadowOffset: { width: 0, height: 4 } }]}>
+            {/* Device ID row */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: `${Colors.primary}06`, borderRadius: 12, borderWidth: 1, borderColor: `${Colors.primary}30`, marginBottom: 8 }}>
+              <Text selectable style={{ flex: 1, color: Colors.text, fontFamily: 'monospace', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 }} numberOfLines={1} ellipsizeMode="middle">
+                {String(device._id || device.id)}
+              </Text>
+              <TouchableOpacity onPress={() => { Clipboard.setStringAsync(String(device._id || device.id)); showToast.success('Device ID copied!'); }} style={{ padding: 7, backgroundColor: `${Colors.primary}22`, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
+                <Copy size={18} color={Colors.primary} />
+              </TouchableOpacity>
+              <Text style={{ color: Colors.textSecondary, fontSize: 13, marginLeft: 3, fontWeight: '700', letterSpacing: 2 }}>ID</Text>
+            </View>
+
+            {/* Device Token row (styled to match) */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%', gap: 10, paddingVertical: 10, paddingHorizontal: 10, backgroundColor: `${Colors.primary}09`, borderRadius: 12, borderWidth: 1, borderColor: `${Colors.primary}40` }}>
+              <Text selectable style={{ flex: 1, color: Colors.primary, fontFamily: 'monospace', fontWeight: '700', fontSize: 15, letterSpacing: 0.2 }} numberOfLines={1} ellipsizeMode="middle">
+                {device.device_token}
+              </Text>
+              <TouchableOpacity onPress={handleCopyToken} style={{ padding: 7, backgroundColor: `${Colors.primary}31`, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}>
+                <Copy size={18} color={Colors.primary} />
+              </TouchableOpacity>
+              <Text style={{ color: Colors.textSecondary, fontSize: 13, marginLeft: 3, fontWeight: '700', letterSpacing: 2 }}>TOKEN</Text>
+            </View>
           </View>
         </View>
 
@@ -503,6 +577,93 @@ export default function DeviceDetailScreen({ route, navigation }) {
         </View>
       </Modal>
 
+      {/* Code Examples Modal */}
+      <Modal 
+        visible={codeModalVisible} 
+        transparent 
+        animationType="slide" 
+        onRequestClose={() => setCodeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.codeModalView, { backgroundColor: Colors.card }]}>
+            <View style={styles.codeModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <FileCode size={24} color={Colors.primary} />
+                <Text style={[styles.codeModalTitle, { color: Colors.text }]}>Integration Code Examples</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCodeModalVisible(false)}>
+                <Text style={[styles.codeModalClose, { color: Colors.textSecondary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Code Type Selector */}
+            <View style={styles.codeTypeSelector}>
+              <TouchableOpacity
+                style={[
+                  styles.codeTypeButton,
+                  { backgroundColor: selectedCodeType === 'esp32' ? Colors.primary + '20' : Colors.cardBorder },
+                  selectedCodeType === 'esp32' && { borderColor: Colors.primary, borderWidth: 2 }
+                ]}
+                onPress={() => setSelectedCodeType('esp32')}
+              >
+                <Code size={18} color={selectedCodeType === 'esp32' ? Colors.primary : Colors.textSecondary} />
+                <Text style={[styles.codeTypeText, { color: selectedCodeType === 'esp32' ? Colors.primary : Colors.textSecondary }]}>
+                  ESP32 (Arduino)
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.codeTypeButton,
+                  { backgroundColor: selectedCodeType === 'python' ? Colors.primary + '20' : Colors.cardBorder },
+                  selectedCodeType === 'python' && { borderColor: Colors.primary, borderWidth: 2 }
+                ]}
+                onPress={() => setSelectedCodeType('python')}
+              >
+                <Code size={18} color={selectedCodeType === 'python' ? Colors.primary : Colors.textSecondary} />
+                <Text style={[styles.codeTypeText, { color: selectedCodeType === 'python' ? Colors.primary : Colors.textSecondary }]}>
+                  Python
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Code Display */}
+            <ScrollView 
+              style={styles.codeScrollView}
+              showsVerticalScrollIndicator={true}
+            >
+              <View style={[styles.codeBlock, { backgroundColor: Colors.background }]}>
+                <View style={styles.codeBlockHeader}>
+                  <Text style={[styles.codeBlockTitle, { color: Colors.text }]}>
+                    {selectedCodeType === 'esp32' ? 'ESP32 Arduino Code' : 'Python Code'}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.copyButton, { backgroundColor: Colors.primary + '20' }]}
+                    onPress={async () => {
+                      const code = selectedCodeType === 'esp32' 
+                        ? generateESP32Code(device, BASE_URL)
+                        : generatePythonCode(device, BASE_URL);
+                      await Clipboard.setStringAsync(code);
+                      showToast.success("Code copied to clipboard!");
+                    }}
+                  >
+                    <Copy size={16} color={Colors.primary} />
+                    <Text style={[styles.copyButtonText, { color: Colors.primary }]}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+                <Text 
+                  selectable
+                  style={[styles.codeText, { color: Colors.text, fontFamily: Platform.select({ ios: 'Courier', android: 'monospace' }) }]}
+                >
+                  {selectedCodeType === 'esp32' 
+                    ? generateESP32Code(device, BASE_URL)
+                    : generatePythonCode(device, BASE_URL)}
+                </Text>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Local Custom Alert */}
       <CustomAlert
         visible={alertVisible}
@@ -511,6 +672,125 @@ export default function DeviceDetailScreen({ route, navigation }) {
       />
     </View>
   );
+}
+
+// Generate ESP32 Integration Guide
+function generateESP32Code(device, baseUrl) {
+  const deviceId = String(device._id || device.id);
+  const deviceToken = device.device_token || 'YOUR_DEVICE_TOKEN_HERE';
+  
+  return `/* ESP32 Integration with ThingsNXT */
+
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+// 📶 WiFi Credentials
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// ☁️ ThingsNXT Configuration
+const char* deviceToken = "${deviceToken}";
+String serverUrl = "${baseUrl}/devices/${deviceId}/telemetry";
+
+// 🔌 Virtual Pin Mapping (Example)
+struct PinMapping { uint8_t vPin; uint8_t gpio; };
+PinMapping VIRTUAL_PIN_MAPPING[] = {
+  {0, 2}, // Map Virtual Pin v0 to GPIO 2
+};
+const uint8_t PIN_COUNT = sizeof(VIRTUAL_PIN_MAPPING) / sizeof(VIRTUAL_PIN_MAPPING[0]);
+
+void setup() {
+  Serial.begin(115200);
+  for (uint8_t i = 0; i < PIN_COUNT; i++) pinMode(VIRTUAL_PIN_MAPPING[i].gpio, OUTPUT);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) delay(500);
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(serverUrl);
+    http.addHeader("Content-Type", "application/json");
+    
+    DynamicJsonDocument doc(512);
+    doc["device_token"] = deviceToken;
+    doc["uptime"] = millis();
+    
+    String payload;
+    serializeJson(doc, payload);
+    
+    int httpCode = http.POST(payload);
+    
+    if (httpCode > 0) {
+      String response = http.getString();
+      DynamicJsonDocument resDoc(2048);
+      deserializeJson(resDoc, response);
+      
+      JsonObject data = resDoc["data"];
+      
+      // Handle Virtual Pins
+      for (uint8_t i = 0; i < PIN_COUNT; i++) {
+        String key = "v" + String(VIRTUAL_PIN_MAPPING[i].vPin);
+        if (data.containsKey(key)) {
+          digitalWrite(VIRTUAL_PIN_MAPPING[i].gpio, data[key] ? HIGH : LOW);
+        }
+      }
+    }
+    http.end();
+  }
+  delay(2000);
+}`;
+}
+
+// Generate Python Integration Guide
+function generatePythonCode(device, baseUrl) {
+  const deviceId = String(device._id || device.id);
+  const deviceToken = device.device_token || 'YOUR_DEVICE_TOKEN_HERE';
+  
+  return `Python Integration with ThingsNXT Platform
+============================================
+
+📡 API ENDPOINT URL:
+${baseUrl}/devices/${deviceId}/telemetry
+
+🔑 AUTHENTICATION:
+Method: POST
+Content-Type: application/json
+
+📝 PYTHON CODE EXAMPLE:
+import requests
+
+DEVICE_ID = "${deviceId}"
+DEVICE_TOKEN = "${deviceToken}"
+SERVER_URL = f"${baseUrl}/devices/{DEVICE_ID}/telemetry"
+
+def send_telemetry():
+    # Payload: Include Device Token in JSON body
+    payload = {
+        "device_token": DEVICE_TOKEN,
+        "temperature": 25.5,  # Your sensor data
+        "humidity": 60.0,     # Your sensor data
+        "pressure": 1013.25,  # Your sensor data
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    
+    response = requests.post(SERVER_URL, json=payload, headers=headers)
+    return response
+
+# Usage
+response = send_telemetry()
+print(response.status_code)
+print(response.json())
+
+✅ KEY POINTS:
+• Device ID goes in the URL path
+• Device Token goes in the JSON payload
+• Use POST method
+• Include Content-Type: application/json header
+• Install: pip install requests`;
 }
 
 const styles = StyleSheet.create({
@@ -528,6 +808,10 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8,
+  },
+  codeButton: {
+    // Make code button slightly more visible
+    backgroundColor: 'transparent',
   },
   statusCard: {
     borderRadius: 16,
@@ -742,5 +1026,91 @@ const styles = StyleSheet.create({
     // Now used as columnWrapperStyle for FlatList
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  // Code Modal Styles
+  codeModalView: {
+    width: "95%",
+    maxWidth: 500,
+    maxHeight: "90%",
+    borderRadius: 20,
+    padding: 20,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  codeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  codeModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    letterSpacing: -0.3,
+  },
+  codeModalClose: {
+    fontSize: 24,
+    fontWeight: "300",
+    padding: 4,
+  },
+  codeTypeSelector: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  codeTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  codeTypeText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  codeScrollView: {
+    maxHeight: 500,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  codeBlock: {
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  codeBlockHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  codeBlockTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 6,
+  },
+  copyButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  codeText: {
+    fontSize: 11,
+    lineHeight: 18,
   },
 });

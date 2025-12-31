@@ -24,7 +24,33 @@ import { showToast } from "../components/Toast";
 import { DeviceList } from "../components/Devices/DeviceList";
 import CustomAlert from "../components/CustomAlert";
 
+// Helper to ensure dates are treated as UTC if missing timezone info
+const parseDate = (date) => {
+  if (!date) return null;
+  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+    return new Date(date + 'Z');
+  }
+  return new Date(date);
+};
 
+const getDeviceStatus = (device) => {
+  if (!device) return "offline";
+  
+  // Check last_active with 60s threshold
+  if (device.last_active) {
+    const lastActive = parseDate(device.last_active);
+    const now = new Date();
+    const secondsSinceActive = (now - lastActive) / 1000;
+    
+    if (secondsSinceActive <= 60) {
+      return "online";
+    } else if (device.status === "online") {
+      return "offline"; // Override if stale
+    }
+  }
+  
+  return device.status || "offline";
+};
 
 
 export default function DevicesScreen({ navigation }) {
@@ -59,28 +85,33 @@ export default function DevicesScreen({ navigation }) {
     danger: isDarkTheme ? "#FF3366" : "#DC2626",
   };
   
-  const filteredDevices = useMemo(() => devices.filter((device) => {
-    const name = device.name || "";
-    const type = device.type || "";
-    const matchesSearch =
-      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      type.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      selectedStatus === "all" || device.status === selectedStatus;
-    return matchesSearch && matchesStatus;
-  }, [devices, searchQuery, selectedStatus]), [devices, searchQuery, selectedStatus]);
+  const filteredDevices = useMemo(() => {
+    return devices.map(d => ({
+      ...d,
+      status: getDeviceStatus(d) // Override status with computed value
+    })).filter((device) => {
+      const name = device.name || "";
+      const type = device.type || "";
+      const matchesSearch =
+        name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        type.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        selectedStatus === "all" || device.status === selectedStatus;
+      return matchesSearch && matchesStatus;
+    });
+  }, [devices, searchQuery, selectedStatus]);
 
   const statusFilters = useMemo(() => [
     { label: "All", value: "all", count: devices.length },
     {
       label: "Online",
       value: "online",
-      count: devices.filter((d) => d.status === "online").length,
+      count: devices.filter((d) => getDeviceStatus(d) === "online").length,
     },
     {
       label: "Offline",
       value: "offline",
-      count: devices.filter((d) => d.status === "offline").length,
+      count: devices.filter((d) => getDeviceStatus(d) === "offline").length,
     },
   ], [devices]);
 

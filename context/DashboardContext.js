@@ -18,6 +18,12 @@ export const DashboardProvider = ({ children, dashboardId }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
+  const devicesRef = useRef(devices);
+
+  // Keep devicesRef in sync with devices to access latest inside fetchWidgets without dependency
+  useEffect(() => {
+    devicesRef.current = devices;
+  }, [devices]);
 
   const fetchWidgets = useCallback(async () => {
     if (!userToken || !dashboardId) return;
@@ -25,7 +31,7 @@ export const DashboardProvider = ({ children, dashboardId }) => {
     try {
       if (widgets.length === 0) setLoading(true);
 
-      const deviceMap = devices.reduce((map, d) => {
+      const deviceMap = devicesRef.current.reduce((map, d) => {
         map[d._id] = d.device_token;
         return map;
       }, {});
@@ -42,7 +48,7 @@ export const DashboardProvider = ({ children, dashboardId }) => {
         height: w.height || 1,
         // Ensure virtual_pin is accessible both ways (flattened and nested)
         virtual_pin: w.virtual_pin || w.config?.virtual_pin,
-      })).filter(w => w.type !== "led" || w.device_token);
+      }));
 
       if (mountedRef.current) {
         setWidgets(processed);
@@ -55,7 +61,7 @@ export const DashboardProvider = ({ children, dashboardId }) => {
         setRefreshing(false);
       }
     }
-  }, [dashboardId, userToken, devices]);
+  }, [dashboardId, userToken]); // Removed 'devices' to prevent auto-refresh loops
 
   // Initial fetch
   useEffect(() => {
@@ -63,6 +69,32 @@ export const DashboardProvider = ({ children, dashboardId }) => {
     fetchWidgets();
     return () => { mountedRef.current = false; };
   }, [fetchWidgets]);
+
+  // Silently update widget tokens when devices change (e.g. status updates) without full reload
+  useEffect(() => {
+    if (widgets.length === 0) return;
+
+    const deviceMap = devices.reduce((map, d) => {
+      map[d._id] = d.device_token;
+      return map;
+    }, {});
+
+    setWidgets(prevWidgets => {
+      let hasChanges = false;
+      const updated = prevWidgets.map(w => {
+        // Only update if it's an LED widget dependent on a device
+        if (w.type !== "led" || !w.device_id) return w;
+        
+        const newToken = deviceMap[w.device_id] || null;
+        if (w.device_token !== newToken) {
+          hasChanges = true;
+          return { ...w, device_token: newToken };
+        }
+        return w;
+      });
+      return hasChanges ? updated : prevWidgets;
+    });
+  }, [devices]);
 
   // WebSocket listener for widget updates
   useEffect(() => {

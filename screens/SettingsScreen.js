@@ -32,23 +32,31 @@ import {
   EyeOff,
   Download,
   Upload,
+  Cpu,
+  LayoutDashboard,
+  Settings,
+  Zap,
+  FileText,
 } from "lucide-react-native";
-import { LayoutDashboard } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MenuItem from "../components/settings/MenuItem";
 import { showToast } from "../components/Toast";
 import { getThemeColors } from "../utils/theme";
+import api from "../services/api";
 
 export default function SettingsScreen() {
   const {
     logout,
     username,
     email,
+    user,
+    devices,
     isDarkTheme,
     showAlert,
     themePreference,
     setThemePreference,
+    updateUser,
   } = useContext(AuthContext);
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -62,14 +70,42 @@ export default function SettingsScreen() {
   const [selectedRange, setSelectedRange] = useState("7d");
   const [isExporting, setIsExporting] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState("en");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [pushNotifications, setPushNotifications] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(user?.notification_settings?.enabled ?? true);
+  const [emailNotifications, setEmailNotifications] = useState(user?.notification_settings?.email ?? true);
+  const [pushNotifications, setPushNotifications] = useState(user?.notification_settings?.push ?? true);
+  const [isSavingNotifications, setIsSavingNotifications] = useState(false);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(true);
   const [dataSharing, setDataSharing] = useState(false);
+  const [dashboardCount, setDashboardCount] = useState(0);
+  const [loadingStats, setLoadingStats] = useState(true);
 
   // Use centralized theme utility
   const Colors = getThemeColors(isDarkTheme);
+
+  // Load dashboard count
+  React.useEffect(() => {
+    const loadDashboards = async () => {
+      try {
+        setLoadingStats(true);
+        const dashboards = await api.getDashboards();
+        setDashboardCount(dashboards?.length || 0);
+      } catch (err) {
+        console.log("Dashboard load error:", err);
+      } finally {
+        setLoadingStats(false);
+      }
+    };
+    loadDashboards();
+  }, []);
+
+  // Update local state when user context updates
+  React.useEffect(() => {
+    if (user?.notification_settings) {
+      setNotificationsEnabled(user.notification_settings.enabled ?? true);
+      setEmailNotifications(user.notification_settings.email ?? true);
+      setPushNotifications(user.notification_settings.push ?? true);
+    }
+  }, [user]);
 
   const handleLogout = () => {
     setAlertConfig({
@@ -143,15 +179,44 @@ export default function SettingsScreen() {
     showToast.success("Language Updated", "App language preference saved");
   };
 
-  const handleNotificationsSave = () => {
-    setNotificationsModalVisible(false);
-    showToast.success("Settings Saved", "Notification preferences updated");
+  const handleNotificationsSave = async () => {
+    setIsSavingNotifications(true);
+    try {
+      await updateUser({
+        notification_settings: {
+          enabled: notificationsEnabled,
+          email: emailNotifications,
+          push: pushNotifications
+        }
+      });
+      setNotificationsModalVisible(false);
+      showToast.success("Settings Saved", "Notification preferences updated");
+    } catch (err) {
+      showToast.error("Error", "Failed to save notification settings");
+    } finally {
+      setIsSavingNotifications(false);
+    }
   };
 
   const handlePrivacySave = () => {
     setPrivacyModalVisible(false);
     showToast.success("Settings Saved", "Privacy preferences updated");
   };
+
+  // Quick Stats Cards Component
+  const QuickStatCard = ({ icon, value, label, color, onPress }) => (
+    <TouchableOpacity
+      style={[styles.quickStatCard, { backgroundColor: Colors.surface, borderColor: Colors.border }]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <View style={[styles.quickStatIcon, { backgroundColor: color + "20" }]}>
+        {icon}
+      </View>
+      <Text style={[styles.quickStatValue, { color: Colors.text }]}>{value}</Text>
+      <Text style={[styles.quickStatLabel, { color: Colors.textSecondary }]}>{label}</Text>
+    </TouchableOpacity>
+  );
 
   // ⭐ Refactored Menu Structure
   const menuSections = [
@@ -161,7 +226,7 @@ export default function SettingsScreen() {
         {
           icon: { component: <User size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
           title: "Profile",
-          subtitle: username || "Edit your personal information",
+          subtitle: user?.full_name || username || "Edit your personal information",
           onPress: handleProfilePress,
           rightComponent: { type: 'chevron' },
         },
@@ -180,8 +245,15 @@ export default function SettingsScreen() {
         {
           icon: { component: <Smartphone size={20} color={Colors.secondary} />, bgColor: Colors.secondary + "20" },
           title: "Manage Devices",
-          subtitle: "View and organize your devices",
+          subtitle: `${devices?.length || 0} device${devices?.length !== 1 ? 's' : ''} connected`,
           onPress: () => navigation.navigate("Devices"),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <LayoutDashboard size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
+          title: "Manage Dashboards",
+          subtitle: `${dashboardCount} dashboard${dashboardCount !== 1 ? 's' : ''} available`,
+          onPress: handleDashboardsPress,
           rightComponent: { type: 'chevron' },
         },
         {
@@ -189,13 +261,6 @@ export default function SettingsScreen() {
           title: "Notifications",
           subtitle: "View alerts and system messages",
           onPress: () => navigation.navigate("Notifications"),
-          rightComponent: { type: 'chevron' },
-        },
-        {
-          icon: { component: <LayoutDashboard size={20} color={Colors.warning} />, bgColor: Colors.warning + "20" },
-          title: "Manage Dashboards",
-          subtitle: "Organize and customize dashboards",
-          onPress: handleDashboardsPress,
           rightComponent: { type: 'chevron' },
         },
       ],
@@ -219,7 +284,7 @@ export default function SettingsScreen() {
         },
         {
           icon: { component: <Bell size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" },
-          title: "Notifications",
+          title: "Notification Settings",
           subtitle: notificationsEnabled ? "Enabled" : "Disabled",
           onPress: () => setNotificationsModalVisible(true),
           rightComponent: { type: 'chevron' },
@@ -239,10 +304,21 @@ export default function SettingsScreen() {
       ],
     },
     {
-      title: "Data & Privacy",
+      title: "Data Management",
       items: [
-        { icon: { component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, title: "Data Export", subtitle: "Download sensor data logs", onPress: handleDataExport, rightComponent: { type: 'chevron' } },
-        { icon: { component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }, title: "Clear Cache", subtitle: "Clear temporary app data", onPress: handleClearCache },
+        { 
+          icon: { component: <Database size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" }, 
+          title: "Data Export", 
+          subtitle: "Download sensor data logs", 
+          onPress: handleDataExport, 
+          rightComponent: { type: 'chevron' } 
+        },
+        { 
+          icon: { component: <Trash2 size={20} color={Colors.danger} />, bgColor: Colors.danger + "20" }, 
+          title: "Clear Cache", 
+          subtitle: "Clear temporary app data", 
+          onPress: handleClearCache 
+        },
       ],
     },
     {
@@ -279,29 +355,63 @@ export default function SettingsScreen() {
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
       <LinearGradient
         colors={isDarkTheme ? [Colors.surface, Colors.background] : ["#FFFFFF", "#F1F5F9"]}
-        style={[styles.header, { paddingTop: insets.top + 20 }]} // Adjust padding for safe area
+        style={[styles.header, { paddingTop: insets.top + 20 }]}
       >
-        <View style={styles.profileHeader}>
-          {/* Profile Info (Left Side) - Now Tappable */}
-          <TouchableOpacity onPress={handleProfilePress} activeOpacity={0.8}>
-            <View style={styles.profileInfoContainer}>
-              <View style={[styles.avatar, { backgroundColor: Colors.primary + '30' }]}>
-                <User size={32} color={Colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.profileName, { color: Colors.text }]}>
-                  {username || 'User'}
-                </Text>
-                <Text style={[styles.profileEmail, { color: Colors.textSecondary }]}>
-                  {email || 'user@example.com'}
-                </Text>
-              </View>
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <Text style={[styles.headerTitle, { color: Colors.text }]}>Settings</Text>
+            <TouchableOpacity 
+              style={[styles.logoutButton, { backgroundColor: Colors.danger + "15" }]} 
+              onPress={handleLogout}
+            >
+              <LogOut size={20} color={Colors.danger} />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Profile Card */}
+          <TouchableOpacity 
+            onPress={handleProfilePress} 
+            activeOpacity={0.8}
+            style={[styles.profileCard, { backgroundColor: Colors.surface }]}
+          >
+            <View style={[styles.avatar, { backgroundColor: Colors.primary + '20' }]}>
+              <User size={28} color={Colors.primary} />
             </View>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: Colors.text }]}>
+                {user?.full_name || username || 'User'}
+              </Text>
+              <Text style={[styles.profileEmail, { color: Colors.textSecondary }]} numberOfLines={1}>
+                {email || 'user@example.com'}
+              </Text>
+            </View>
+            <ChevronRight size={20} color={Colors.textSecondary} />
           </TouchableOpacity>
-          {/* Logout Button (Right Side) */}
-          <TouchableOpacity style={styles.headerLogoutButton} onPress={handleLogout}>
-            <LogOut size={24} color={Colors.danger} />
-          </TouchableOpacity>
+
+          {/* Quick Stats */}
+          <View style={styles.quickStatsContainer}>
+            <QuickStatCard
+              icon={<Cpu size={18} color={Colors.primary} />}
+              value={devices?.length || 0}
+              label="Devices"
+              color={Colors.primary}
+              onPress={() => navigation.navigate("Devices")}
+            />
+            <QuickStatCard
+              icon={<LayoutDashboard size={18} color={Colors.warning} />}
+              value={loadingStats ? "--" : dashboardCount}
+              label="Dashboards"
+              color={Colors.warning}
+              onPress={handleDashboardsPress}
+            />
+            <QuickStatCard
+              icon={<Bell size={18} color={Colors.danger} />}
+              value={devices?.filter(d => d.status === "online").length || 0}
+              label="Online"
+              color={Colors.success}
+              onPress={() => navigation.navigate("Notifications")}
+            />
+          </View>
         </View>
       </LinearGradient>
 
@@ -549,8 +659,13 @@ export default function SettingsScreen() {
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: Colors.primary }]}
                 onPress={handleNotificationsSave}
+                disabled={isSavingNotifications}
               >
-                <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
+                {isSavingNotifications ? (
+                  <ActivityIndicator color={Colors.white} />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: Colors.white }]}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -626,45 +741,104 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    // paddingTop will be set dynamically using insets.top
-    paddingBottom: 24,
+    paddingBottom: 20,
     paddingHorizontal: 20,
   },
-  profileHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between', // Distribute space between profile info and logout button
-  },
-  profileInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignItems: 'center',
+  headerContent: {
     gap: 16,
   },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 32,
+    fontWeight: "800",
+    letterSpacing: -0.5,
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileInfo: {
+    flex: 1,
+  },
   profileName: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "700",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   profileEmail: {
-    fontSize: 14,
+    fontSize: 13,
   },
-  headerLogoutButton: {
-    padding: 8, // Add some padding for easier tapping
-    // No specific background, let it be transparent
+  quickStatsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  quickStatCard: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  quickStatIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  quickStatValue: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 2,
+  },
+  quickStatLabel: {
+    fontSize: 11,
+    fontWeight: "500",
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   scrollContent: {
     padding: 20,
+    paddingTop: 12,
     paddingBottom: 100,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 28,
   },
   sectionTitle: {
     fontSize: 14,
@@ -684,24 +858,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.65)",
+    padding: 20,
   },
   modalContent: {
-    width: "90%",
-    borderRadius: 16,
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 20,
     padding: 24,
-    elevation: 5,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
+    fontSize: 24,
+    fontWeight: "700",
     textAlign: "center",
     marginBottom: 8,
+    letterSpacing: -0.3,
   },
   modalSubtitle: {
     fontSize: 14,
     textAlign: "center",
     marginBottom: 24,
+    lineHeight: 20,
   },
   rangeContainer: {
     gap: 12,
@@ -710,8 +892,10 @@ const styles = StyleSheet.create({
   rangeOption: {
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: 'center',
+    minHeight: 52,
+    justifyContent: 'center',
   },
   rangeText: {
     fontSize: 16,
@@ -724,28 +908,33 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     flex: 1,
-    padding: 14,
+    padding: 16,
     borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
+    minHeight: 50,
   },
   modalBtnText: {
     fontSize: 16,
     fontWeight: "600",
+    letterSpacing: 0.3,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   settingLabel: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   settingDescription: {
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 19,
+    opacity: 0.85,
   },
 });

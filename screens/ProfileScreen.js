@@ -21,11 +21,14 @@ import {
   Calendar,
   Cpu,
   Wifi,
-  LayoutDashboard
+  LayoutDashboard,
+  Hash,
+  CheckCircle
 } from 'lucide-react-native';
 
 import CustomAlert from '../components/CustomAlert';
 import StatCard from '../components/profile/StatCard';
+import ProfileInfoRow from '../components/profile/ProfileInfoRow';
 import api from '../services/api';
 
 // Utility
@@ -36,6 +39,34 @@ const alpha = (hex, opacity) => {
 
 // Reference height for header animation
 const HEADER_HEIGHT = 220;
+
+// Helper to ensure dates are treated as UTC if missing timezone info
+const parseDate = (date) => {
+  if (!date) return null;
+  if (typeof date === 'string' && !date.endsWith('Z') && !date.includes('+')) {
+    return new Date(date + 'Z');
+  }
+  return new Date(date);
+};
+
+const getDeviceStatus = (device) => {
+  if (!device) return "offline";
+  
+  // Check last_active with 60s threshold
+  if (device.last_active) {
+    const lastActive = parseDate(device.last_active);
+    const now = new Date();
+    const secondsSinceActive = (now - lastActive) / 1000;
+    
+    if (secondsSinceActive <= 60) {
+      return "online";
+    } else if (device.status === "online") {
+      return "offline"; // Override if stale
+    }
+  }
+  
+  return device.status || "offline";
+};
 
 export default function ProfileScreen({ navigation }) {
   const {
@@ -51,6 +82,7 @@ export default function ProfileScreen({ navigation }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedUsername, setEditedUsername] = useState(username || "");
   const [editedEmail, setEditedEmail] = useState(email || "");
+  const [editedFullName, setEditedFullName] = useState(user?.full_name || "");
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [dashboardCount, setDashboardCount] = useState(0);
@@ -105,9 +137,10 @@ export default function ProfileScreen({ navigation }) {
     if (!isEditing) {
       setEditedUsername(username || "");
       setEditedEmail(email || "");
+      setEditedFullName(user?.full_name || "");
       setHasChanges(false);
     }
-  }, [username, email, isEditing]);
+  }, [username, email, user?.full_name, isEditing]);
 
   // Load dashboard count
   useEffect(() => {
@@ -127,8 +160,12 @@ export default function ProfileScreen({ navigation }) {
 
   // Track changes
   useEffect(() => {
-    setHasChanges(editedUsername !== username || editedEmail !== email);
-  }, [editedUsername, editedEmail, username, email]);
+    setHasChanges(
+      editedUsername !== username || 
+      editedEmail !== email || 
+      editedFullName !== (user?.full_name || "")
+    );
+  }, [editedUsername, editedEmail, editedFullName, username, email, user?.full_name]);
 
   const isEmailValid = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 
@@ -161,10 +198,10 @@ export default function ProfileScreen({ navigation }) {
       const updates = {};
       if (editedUsername !== username) updates.username = editedUsername;
       if (editedEmail !== email) updates.email = editedEmail;
+      if (editedFullName !== (user?.full_name || "")) updates.full_name = editedFullName;
 
       if (Object.keys(updates).length > 0) {
-        const updatedUser = { ...user, ...updates };
-        await updateUser(updatedUser);
+        await updateUser(updates);
       }
 
       // FIXED: Exit editing mode BEFORE context update completes
@@ -192,6 +229,7 @@ export default function ProfileScreen({ navigation }) {
   const handleCancel = () => {
     setEditedUsername(username || "");
     setEditedEmail(email || "");
+    setEditedFullName(user?.full_name || "");
     setIsEditing(false);
     setHasChanges(false);
   };
@@ -215,37 +253,6 @@ export default function ProfileScreen({ navigation }) {
     setAlertVisible(true);
   };
 
-  // Inline ProfileInfoRow component (fully functional)
-  const ProfileInfoRow = ({ icon, label, value, onChangeText, placeholder, Colors, isEditing }) => (
-    <View style={styles.infoRow}>
-      <View style={[styles.iconContainer, { backgroundColor: alpha(Colors.primary, 0.1) }]}>
-        {icon}
-      </View>
-      <View style={styles.infoContent}>
-        <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>{label}</Text>
-        {isEditing ? (
-          <TextInput
-            style={[styles.inputField, { 
-              color: Colors.text, 
-              backgroundColor: Colors.surfaceLight,
-              borderColor: Colors.border
-            }]}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={Colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={true}
-          />
-        ) : (
-          <Text style={[styles.infoValue, { color: Colors.text }]} numberOfLines={1}>
-            {value || placeholder || 'Not set'}
-          </Text>
-        )}
-      </View>
-    </View>
-  );
 
   return (
     <View style={[styles.container, { backgroundColor: Colors.background }]}>
@@ -284,10 +291,10 @@ export default function ProfileScreen({ navigation }) {
             }}
           >
             <Text style={[styles.profileName, { color: Colors.text }]}>
-              {isEditing ? editedUsername : (username || "User")}
+              {isEditing ? editedFullName || editedUsername : (user?.full_name || username || "User")}
             </Text>
             <Text style={[styles.profileRole, { color: Colors.textSecondary }]}>
-              Administrator
+              {user?.full_name ? `@${username || "user"}` : "Administrator"}
             </Text>
           </Animated.View>
         </View>
@@ -330,7 +337,7 @@ export default function ProfileScreen({ navigation }) {
 
           <StatCard
             icon={<Wifi size={20} color={Colors.warning} />}
-            value={devices?.filter(d => d.status === "online").length || 0}
+            value={devices?.filter(d => getDeviceStatus(d) === "online").length || 0}
             label="Online Devices"
             colors={[alpha(Colors.warning, 0.35), alpha(Colors.warning, 0.10)]}
             isDarkTheme={isDarkTheme}
@@ -368,12 +375,24 @@ export default function ProfileScreen({ navigation }) {
         <View style={[styles.card, { backgroundColor: Colors.surface }]}>
           <ProfileInfoRow
             icon={<User size={20} color={Colors.primary} />}
+            label="Full Name"
+            value={editedFullName}
+            Colors={Colors}
+            isEditing={isEditing}
+            onChangeText={setEditedFullName}
+            placeholder="Enter your full name"
+            autoCapitalize="words"
+          />
+
+          <ProfileInfoRow
+            icon={<User size={20} color={Colors.primary} />}
             label="Username"
             value={editedUsername}
             Colors={Colors}
             isEditing={isEditing}
             onChangeText={setEditedUsername}
             placeholder="Enter username"
+            autoCapitalize="none"
           />
 
           <ProfileInfoRow
@@ -384,7 +403,31 @@ export default function ProfileScreen({ navigation }) {
             isEditing={isEditing}
             onChangeText={setEditedEmail}
             placeholder="Enter email address"
+            keyboardType="email-address"
+            autoCapitalize="none"
           />
+
+          {!isEditing && user?.id && (
+            <ProfileInfoRow
+              icon={<Hash size={20} color={Colors.textSecondary} />}
+              label="User ID"
+              value={user.id}
+              Colors={Colors}
+              isEditing={false}
+              editable={false}
+            />
+          )}
+
+          {!isEditing && (
+            <ProfileInfoRow
+              icon={<CheckCircle size={20} color={user?.is_active ? Colors.success : Colors.textSecondary} />}
+              label="Account Status"
+              value={user?.is_active ? "Active" : "Inactive"}
+              Colors={Colors}
+              isEditing={false}
+              editable={false}
+            />
+          )}
 
           {isEditing && (
             <View style={styles.inlineActionsRow}>
@@ -563,49 +606,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
 
-  // ProfileInfoRow styles
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#00000010',
-  },
-
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-
-  infoContent: {
-    flex: 1,
-  },
-
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-
-  infoValue: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  inputField: {
-    fontSize: 16,
-    fontWeight: '600',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginTop: 2,
-  },
 
   inlineActionsRow: {
     flexDirection: 'row',

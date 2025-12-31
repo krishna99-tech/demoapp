@@ -451,12 +451,17 @@ export const AuthProvider = ({ children }) => {
         if (updatedUser.username) {
           setUsername(updatedUser.username);
           await AsyncStorage.setItem("username", updatedUser.username);
-          setUser(prev => ({ ...prev, username: updatedUser.username }));
         }
         if (updatedUser.email) {
           setEmail(updatedUser.email);
           await AsyncStorage.setItem("email", updatedUser.email);
         }
+        // Update full user object with all fields
+        setUser(prev => {
+          const newUser = { ...prev, ...updatedUser };
+          AsyncStorage.setItem("user", JSON.stringify(newUser));
+          return newUser;
+        });
         return updatedUser;
       }
     } catch (err) {
@@ -479,13 +484,22 @@ export const AuthProvider = ({ children }) => {
             if (deviceId === jsonDeviceId) {
               // Merge with existing telemetry to preserve real-time updates
               const existingTelemetry = d.telemetry || {};
+              const lastActiveTime = json.timestamp || new Date().toISOString();
+              
+              // Only update status if we have recent data (within 20 seconds)
+              // Don't automatically set to online just by fetching - device must have sent data recently
+              const lastActive = new Date(lastActiveTime);
+              const now = new Date();
+              const secondsSinceActive = (now - lastActive) / 1000;
+              const shouldBeOnline = secondsSinceActive <= 20;
+              
               const updatedDevice = {
                 ...d,
                 telemetry: { ...existingTelemetry, ...json.data },
-                lastTelemetry: json.timestamp || new Date().toISOString(),
-                // Update status to online when telemetry is fetched
-                status: "online",
-                last_active: json.timestamp || new Date().toISOString(),
+                lastTelemetry: lastActiveTime,
+                // Only set to online if data is recent, otherwise keep existing status
+                status: shouldBeOnline ? "online" : (d.status || "offline"),
+                last_active: lastActiveTime,
               };
               
               // Sync common telemetry fields to top level
