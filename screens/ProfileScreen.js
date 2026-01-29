@@ -31,9 +31,13 @@ import {
   Hash,
   CheckCircle,
   ChevronRight,
-  LogOut
+  LogOut,
+  Phone,
+  FileText,
+  Camera
 } from 'lucide-react-native';
 
+import { showToast } from '../components/Toast';
 import CustomAlert from '../components/CustomAlert';
 import StatCard from '../components/profile/StatCard';
 import ProfileInfoRow from '../components/profile/ProfileInfoRow';
@@ -58,16 +62,18 @@ const parseDate = (date) => {
 const getDeviceStatus = (device) => {
   if (!device) return "offline";
   
+  // Trust explicit offline status from server/context
+  if (device.status === 'offline') return 'offline';
+
   if (device.last_active) {
     const lastActive = parseDate(device.last_active);
     const now = new Date();
     const secondsSinceActive = (now - lastActive) / 1000;
     
-    if (secondsSinceActive <= 60) {
-      return "online";
-    } else if (device.status === "online") {
-      return "offline"; 
+    if (secondsSinceActive > 60) {
+      return "offline";
     }
+    return "online";
   }
   return device.status || "offline";
 };
@@ -89,6 +95,8 @@ export default function ProfileScreen({ navigation }) {
   const [editedUsername, setEditedUsername] = useState(username || "");
   const [editedEmail, setEditedEmail] = useState(email || "");
   const [editedFullName, setEditedFullName] = useState(user?.full_name || "");
+  const [editedPhone, setEditedPhone] = useState(user?.phone || "");
+  const [editedBio, setEditedBio] = useState(user?.bio || "");
   
   // UI State
   const [isSaving, setIsSaving] = useState(false);
@@ -98,6 +106,13 @@ export default function ProfileScreen({ navigation }) {
   const [alertVisible, setAlertVisible] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  const [tick, setTick] = useState(0);
+
+  // Force refresh every 5 seconds to update relative times/statuses
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Theme Constants
   const Colors = {
@@ -130,9 +145,11 @@ export default function ProfileScreen({ navigation }) {
       setEditedUsername(username || "");
       setEditedEmail(email || "");
       setEditedFullName(user?.full_name || "");
+      setEditedPhone(user?.phone || "");
+      setEditedBio(user?.bio || "");
       setHasChanges(false);
     }
-  }, [username, email, user?.full_name, isEditing]);
+  }, [username, email, user?.full_name, user?.phone, user?.bio, isEditing]);
 
   // Load Dashboards
   const loadDashboards = async (showLoading = true) => {
@@ -162,9 +179,11 @@ export default function ProfileScreen({ navigation }) {
     setHasChanges(
       editedUsername !== username || 
       editedEmail !== email || 
-      editedFullName !== (user?.full_name || "")
+      editedFullName !== (user?.full_name || "") ||
+      editedPhone !== (user?.phone || "") ||
+      editedBio !== (user?.bio || "")
     );
-  }, [editedUsername, editedEmail, editedFullName, username, email, user?.full_name]);
+  }, [editedUsername, editedEmail, editedFullName, editedPhone, editedBio, username, email, user?.full_name, user?.phone, user?.bio]);
 
   const isEmailValid = (val) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
 
@@ -172,11 +191,11 @@ export default function ProfileScreen({ navigation }) {
     if (isSaving || !hasChanges) return;
 
     if (!editedUsername.trim()) {
-      showAlert("warning", "Invalid Input", "Username cannot be empty.");
+      showToast.warning("Invalid Input", "Username cannot be empty.");
       return;
     }
     if (!isEmailValid(editedEmail)) {
-      showAlert("warning", "Invalid Input", "Please enter a valid email address.");
+      showToast.warning("Invalid Input", "Please enter a valid email address.");
       return;
     }
 
@@ -186,34 +205,28 @@ export default function ProfileScreen({ navigation }) {
       if (editedUsername !== username) updates.username = editedUsername;
       if (editedEmail !== email) updates.email = editedEmail;
       if (editedFullName !== (user?.full_name || "")) updates.full_name = editedFullName;
+      if (editedPhone !== (user?.phone || "")) updates.phone = editedPhone;
+      if (editedBio !== (user?.bio || "")) updates.bio = editedBio;
 
       if (Object.keys(updates).length > 0) {
         await updateUser(updates);
       }
       
       setIsEditing(false);
-      showAlert("success", "Profile Updated", "Your changes have been saved successfully.");
+      showToast.success("Profile Updated", "Your changes have been saved successfully.");
     } catch (err) {
-      showAlert("error", "Update Failed", err.message || "Failed to update profile.");
+      showToast.error("Update Failed", err.message || "Failed to update profile.");
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const showAlert = (type, title, message) => {
-    setAlertConfig({
-      type,
-      title,
-      message,
-      buttons: [{ text: "OK", onPress: () => setAlertVisible(false) }]
-    });
-    setAlertVisible(true);
   };
 
   const handleCancel = () => {
     setEditedUsername(username || "");
     setEditedEmail(email || "");
     setEditedFullName(user?.full_name || "");
+    setEditedPhone(user?.phone || "");
+    setEditedBio(user?.bio || "");
     setIsEditing(false);
     setHasChanges(false);
   };
@@ -296,16 +309,20 @@ export default function ProfileScreen({ navigation }) {
           end={{ x: 1, y: 1 }}
         >
           <View style={styles.headerContent}>
-            <View style={[styles.avatarContainer, { borderColor: 'rgba(255,255,255,0.2)' }]}>
+            <TouchableOpacity 
+              style={[styles.avatarContainer, { borderColor: 'rgba(255,255,255,0.2)' }]}
+              activeOpacity={isEditing ? 0.7 : 1}
+              onPress={() => isEditing && showToast.info("Coming Soon", "Profile picture upload will be available in the next update.")}
+            >
               <View style={[styles.avatar, { backgroundColor: Colors.surface }]}>
                 <User size={40} color={Colors.primary} />
               </View>
               {isEditing && (
-                <View style={[styles.editBadge, { backgroundColor: Colors.warning }]}>
-                  <Edit size={12} color="#FFF" />
+                <View style={[styles.editBadge, { backgroundColor: Colors.primary }]}>
+                  <Camera size={14} color="#FFF" />
                 </View>
               )}
-            </View>
+            </TouchableOpacity>
             
             <View style={styles.headerTextContainer}>
               <Text style={styles.headerName}>
@@ -403,6 +420,29 @@ export default function ProfileScreen({ navigation }) {
             onChangeText={setEditedEmail}
             keyboardType="email-address"
             placeholder="Email"
+          />
+
+          <ProfileInfoRow
+            icon={<Phone size={20} color={Colors.primary} />}
+            label="Phone Number"
+            value={editedPhone}
+            Colors={Colors}
+            isEditing={isEditing}
+            onChangeText={setEditedPhone}
+            keyboardType="phone-pad"
+            placeholder="+1 234 567 8900"
+          />
+
+          <ProfileInfoRow
+            icon={<FileText size={20} color={Colors.primary} />}
+            label="Bio"
+            value={editedBio}
+            Colors={Colors}
+            isEditing={isEditing}
+            onChangeText={setEditedBio}
+            placeholder="Tell us about yourself..."
+            multiline={true}
+            numberOfLines={3}
           />
 
           {!isEditing && (

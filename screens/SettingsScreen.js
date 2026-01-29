@@ -41,6 +41,7 @@ import {
   Sun,
   Moon,
   X,
+  Webhook,
 } from "lucide-react-native";
 import CustomAlert from "../components/CustomAlert";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -330,6 +331,13 @@ export default function SettingsScreen() {
           title: "Connected Apps",
           subtitle: "Manage third-party services",
           onPress: () => navigation.navigate("ConnectedApps"),
+          rightComponent: { type: 'chevron' },
+        },
+        {
+          icon: { component: <Webhook size={20} color={Colors.primary} />, bgColor: Colors.primary + "20" },
+          title: "Webhooks",
+          subtitle: "Manage real-time event callbacks",
+          onPress: () => navigation.navigate("Webhooks"),
           rightComponent: { type: 'chevron' },
         },
       ],

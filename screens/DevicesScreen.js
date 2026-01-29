@@ -8,6 +8,8 @@ import {
   TextInput,
   ScrollView,
   Modal,
+  FlatList,
+  RefreshControl,
   ActivityIndicator,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -19,9 +21,14 @@ import {
   Search,
   Filter,
   Plus,
+  CheckCircle,
+  Circle,
+  Wifi,
+  WifiOff,
+  X,
+  Check,
 } from "lucide-react-native";
 import { showToast } from "../components/Toast";
-import { DeviceList } from "../components/Devices/DeviceList";
 import CustomAlert from "../components/CustomAlert";
 
 // Helper to ensure dates are treated as UTC if missing timezone info
@@ -36,17 +43,19 @@ const parseDate = (date) => {
 const getDeviceStatus = (device) => {
   if (!device) return "offline";
   
+  // Trust explicit offline status from server/context
+  if (device.status === 'offline') return 'offline';
+
   // Check last_active with 60s threshold
   if (device.last_active) {
     const lastActive = parseDate(device.last_active);
     const now = new Date();
     const secondsSinceActive = (now - lastActive) / 1000;
     
-    if (secondsSinceActive <= 60) {
-      return "online";
-    } else if (device.status === "online") {
-      return "offline"; // Override if stale
+    if (secondsSinceActive > 60) {
+      return "offline";
     }
+    return "online";
   }
   
   return device.status || "offline";
@@ -54,9 +63,9 @@ const getDeviceStatus = (device) => {
 
 
 export default function DevicesScreen({ navigation }) {
-  const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices, isRefreshing: isContextRefreshing } = useContext(AuthContext);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { devices, isDarkTheme, addDevice: addDeviceFromContext, updateDevice, deleteDevice, fetchDevices, isRefreshing: isContextRefreshing, bulkUpdateDeviceStatus } = useContext(AuthContext);
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [addDeviceModalVisible, setAddDeviceModalVisible] = useState(false);
@@ -71,6 +80,17 @@ export default function DevicesScreen({ navigation }) {
 
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState(new Set());
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  // Force refresh every 5 seconds to update relative times/statuses
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const Colors = {
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -99,7 +119,7 @@ export default function DevicesScreen({ navigation }) {
         selectedStatus === "all" || device.status === selectedStatus;
       return matchesSearch && matchesStatus;
     });
-  }, [devices, searchQuery, selectedStatus]);
+  }, [devices, searchQuery, selectedStatus, tick]);
 
   const statusFilters = useMemo(() => [
     { label: "All", value: "all", count: devices.length },
@@ -218,6 +238,40 @@ export default function DevicesScreen({ navigation }) {
     setAlertVisible(true);
   };
 
+  const toggleSelectionMode = () => {
+    if (isSelectionMode) {
+      setIsSelectionMode(false);
+      setSelectedDeviceIds(new Set());
+    } else {
+      setIsSelectionMode(true);
+    }
+  };
+
+  const toggleDeviceSelection = (id) => {
+    const newSet = new Set(selectedDeviceIds);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedDeviceIds(newSet);
+  };
+
+  const handleBulkAction = async (status) => {
+    if (selectedDeviceIds.size === 0) return;
+    setIsBulkUpdating(true);
+    try {
+      await bulkUpdateDeviceStatus(Array.from(selectedDeviceIds), status);
+      showToast.success("Success", `Updated ${selectedDeviceIds.size} devices`);
+      setIsSelectionMode(false);
+      setSelectedDeviceIds(new Set());
+    } catch (err) {
+      showToast.error("Error", err.message);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={[styles.container, { backgroundColor: Colors.background }]}>
@@ -227,14 +281,22 @@ export default function DevicesScreen({ navigation }) {
       >
         <View style={styles.headerContent}>
           <View>
-            <Text style={[styles.title, { color: Colors.text }]}>Devices</Text>
-            <Text style={[styles.subtitle, { color: Colors.textSecondary }]}>
-              {devices.length} devices connected
+            <Text style={[styles.title, { color: Colors.text }]}>
+              {isSelectionMode ? `${selectedDeviceIds.size} Selected` : "Devices"}
             </Text>
           </View>
-          <TouchableOpacity style={[styles.addButton, { backgroundColor: Colors.primary }]} onPress={() => setAddDeviceModalVisible(true)}>
-            <Plus size={24} color={Colors.white} />
-          </TouchableOpacity>
+          {isSelectionMode ? (
+            <TouchableOpacity 
+              style={[styles.addButton, { backgroundColor: Colors.surfaceLight }]} 
+              onPress={toggleSelectionMode}
+            >
+              <X size={24} color={Colors.text} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[styles.addButton, { backgroundColor: Colors.primary }]} onPress={() => setAddDeviceModalVisible(true)}>
+              <Plus size={24} color={Colors.white} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.searchContainer}>
@@ -297,16 +359,59 @@ export default function DevicesScreen({ navigation }) {
         </ScrollView>
       </LinearGradient>
 
-<DeviceList
-  devices={filteredDevices}
-  isDarkTheme={isDarkTheme}
-  onEdit={handleOpenEditModal}
-  onDelete={handleDeleteDevice}
-  onPress={(device) => navigation.navigate("DeviceDetail", { deviceId: device.id || device._id })}
-  refreshing={isRefreshing || isContextRefreshing}
-  onRefresh={onRefresh}
-  Colors={Colors}
-/>
+      <FlatList
+        data={filteredDevices}
+        keyExtractor={(item) => String(item.id || item._id)}
+        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing || isContextRefreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primary}
+          />
+        }
+        renderItem={({ item }) => {
+          const isSelected = selectedDeviceIds.has(String(item.id || item._id));
+          const status = getDeviceStatus(item);
+          return (
+            <TouchableOpacity
+              style={[
+                styles.deviceItem,
+                { backgroundColor: Colors.surface, borderColor: isSelected ? Colors.primary : Colors.border },
+                isSelected && { backgroundColor: Colors.primary + '10' }
+              ]}
+              onPress={() => {
+                if (isSelectionMode) {
+                  toggleDeviceSelection(String(item.id || item._id));
+                } else {
+                  navigation.navigate("DeviceDetail", { deviceId: item.id || item._id });
+                }
+              }}
+              onLongPress={() => {
+                if (!isSelectionMode) {
+                  setIsSelectionMode(true);
+                  toggleDeviceSelection(String(item.id || item._id));
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.deviceItemContent}>
+                <View style={[styles.deviceIcon, { backgroundColor: Colors.surfaceLight }]}>
+                  {isSelectionMode ? (
+                    isSelected ? <CheckCircle size={24} color={Colors.primary} /> : <Circle size={24} color={Colors.textMuted} />
+                  ) : (
+                    <Wifi size={24} color={status === 'online' ? Colors.primary : Colors.textMuted} />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.deviceName, { color: Colors.text }]}>{item.name}</Text>
+                  <Text style={[styles.deviceType, { color: Colors.textSecondary }]}>{item.type || 'Device'} • {status}</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {/* Add Device Modal */}
       <Modal
@@ -412,6 +517,29 @@ export default function DevicesScreen({ navigation }) {
         </View>
       </Modal>
 
+      {/* Bulk Action Bar */}
+      {isSelectionMode && (
+        <View style={[styles.bulkActionBar, { backgroundColor: Colors.surface, borderTopColor: Colors.border }]}>
+          <Text style={{ color: Colors.text, fontWeight: '600' }}>{selectedDeviceIds.size} selected</Text>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity 
+              style={[styles.bulkActionBtn, { backgroundColor: Colors.surfaceLight }]}
+              onPress={() => handleBulkAction('offline')}
+              disabled={isBulkUpdating}
+            >
+              <WifiOff size={20} color={Colors.danger} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.bulkActionBtn, { backgroundColor: Colors.primary }]}
+              onPress={() => handleBulkAction('online')}
+              disabled={isBulkUpdating}
+            >
+              {isBulkUpdating ? <ActivityIndicator color="#FFF" size="small" /> : <Wifi size={20} color="#FFF" />}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Custom Alert */}
       <CustomAlert
         visible={alertVisible}
@@ -513,6 +641,36 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   filterChipBadgeTextActive: {},
+  deviceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  deviceItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  deviceIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deviceName: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  deviceType: {
+    fontSize: 14,
+    textTransform: 'capitalize',
+  },
   modalContainer: {
     flex: 1,
     justifyContent: "center",
@@ -558,5 +716,25 @@ const styles = StyleSheet.create({
     color: "#DC2626",
     fontSize: 12,
     marginTop: 4,
+  },
+  bulkActionBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    paddingBottom: 30,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    elevation: 10,
+  },
+  bulkActionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

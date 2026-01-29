@@ -1,5 +1,5 @@
 // screens/HomeScreen.js
-import React, { useContext, useState, useMemo, useCallback } from "react";
+import React, { useContext, useState, useMemo, useCallback,useEffect } from "react";
 import {
   FlatList,
   View,
@@ -32,6 +32,7 @@ import {
   Shield,
   ChevronRight,
 } from "lucide-react-native";
+import { LayoutDashboard } from "lucide-react-native";
 import { Lightbulb, Thermometer } from "lucide-react-native";
 import StatCard from "../components/home/StatCard";
 import HomeSection from "../components/home/HomeSection";
@@ -39,6 +40,7 @@ import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
 
 // 📱 Responsive scaling based on device width
+
 const { width, height } = Dimensions.get("window");
 const CARD_PADDING = 16;
 const CARD_GAP = 12;
@@ -55,17 +57,19 @@ const parseDate = (date) => {
 const getDeviceStatus = (device) => {
   if (!device) return "offline";
   
+  // Trust explicit offline status from server/context
+  if (device.status === 'offline') return 'offline';
+
   // Check last_active with 60s threshold
   if (device.last_active) {
     const lastActive = parseDate(device.last_active);
     const now = new Date();
     const secondsSinceActive = (now - lastActive) / 1000;
     
-    if (secondsSinceActive <= 60) {
-      return "online";
-    } else if (device.status === "online") {
-      return "offline"; // Override if stale
+    if (secondsSinceActive > 60) {
+      return "offline";
     }
+    return "online";
   }
   
   return device.status || "offline";
@@ -190,6 +194,21 @@ const DashboardCard = React.memo(({ dashboard, onPress, Colors }) => {
   );
 });
 
+const EmptyState = React.memo(({ icon: Icon, title, message, buttonText, onButtonPress, Colors }) => (
+  <View style={[styles.emptyContainer, { backgroundColor: Colors.surface, borderColor: Colors.border }]}>
+    <View style={[styles.emptyIconContainer, { backgroundColor: Colors.primary + '15' }]}>
+      <Icon size={32} color={Colors.primary} />
+    </View>
+    <Text style={[styles.emptyTitle, { color: Colors.text }]}>{title}</Text>
+    <Text style={[styles.emptyMessage, { color: Colors.textSecondary }]}>{message}</Text>
+    {onButtonPress && buttonText && (
+      <TouchableOpacity style={[styles.emptyButton, { backgroundColor: Colors.primary }]} onPress={onButtonPress}>
+        <Text style={styles.emptyButtonText}>{buttonText}</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+));
+
 const DeviceCard = React.memo(({ device, onPress, Colors }) => {
   const status = getDeviceStatus(device);
   const isOnline = status === 'online';
@@ -292,6 +311,24 @@ const Shimmer = ({ children, style, isDarkTheme }) => {
   );
 };
 
+const StatCardSkeleton = React.memo(({ isLarge, Colors }) => (
+  <Shimmer 
+    style={[
+      styles.statCard, 
+      isLarge ? styles.statCardLarge : styles.statCardSmall,
+      { backgroundColor: Colors.surfaceLight, borderColor: 'transparent' }
+    ]} 
+    isDarkTheme={Colors.background === "#0A0E27"}
+  >
+    <View style={styles.statCardContent}>
+      <View style={{ height: 24, width: 24, backgroundColor: Colors.surface, borderRadius: 12, marginBottom: 12 }} />
+      <View style={{ height: 20, width: '40%', backgroundColor: Colors.surface, borderRadius: 8, marginBottom: 6 }} />
+      <View style={{ height: 14, width: '60%', backgroundColor: Colors.surface, borderRadius: 8 }} />
+    </View>
+  </Shimmer>
+));
+
+
 const DashboardCardSkeleton = React.memo(({ Colors }) => (
   <Shimmer style={[styles.dashboardCard, { backgroundColor: Colors.surfaceLight }]} isDarkTheme={Colors.background === "#0A0E27"}>
     <View style={styles.dashboardGradient}>
@@ -323,11 +360,18 @@ const DeviceCardSkeleton = React.memo(({ Colors }) => (
 
 export default function HomeScreen() {
   const navigation = useNavigation();
-  const { username, devices = [], isDarkTheme, userToken, logout, isRefreshing: devicesLoading } = useContext(AuthContext);
+  const { username, devices = [], isDarkTheme, userToken, logout } = useContext(AuthContext);
   const [dashboards, setDashboards] = useState([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [dashboardsLoading, setDashboardsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  // Force refresh every 5 seconds to update relative times/statuses
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const Colors = useMemo(() => ({
       background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -348,9 +392,9 @@ export default function HomeScreen() {
       statusWarning: "#FFB800",
   }), [isDarkTheme]);
 
-  const fetchDashboardsAndNotifications = async (showLoading = true) => {
+  const fetchData = async (isInitialLoad = false) => {
     if (!userToken) return;
-    if (showLoading) setDashboardsLoading(true);
+    if (isInitialLoad) setLoading(true);
     try {
       // Fetch in parallel
       const [dashboardsData, notificationsData] = await Promise.all([
@@ -369,20 +413,20 @@ export default function HomeScreen() {
     } catch (err) {
       console.error("Home Screen fetch error:", err.message); // API service will handle 401
     } finally {
-      if (showLoading) setDashboardsLoading(false);
+      if (isInitialLoad) setLoading(false);
     }
   };
 
   useFocusEffect(
     useCallback(() => {
-      fetchDashboardsAndNotifications();
+      fetchData(true);
     }, [userToken])
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchDashboardsAndNotifications(false);
+      await fetchData(false);
     } catch (error) {
       console.error("Failed to refresh home screen:", error);
     }
@@ -390,13 +434,21 @@ export default function HomeScreen() {
   }, [userToken]);
 
   // 📊 Stats
-  const { onlineDevices, offlineDevices, activeDevices, recentDevices } = useMemo(() => {
+  const { onlineDevices, offlineDevices, activeDevices, favoriteDevices, recentDevices } = useMemo(() => {
     const online = devices.filter((d) => getDeviceStatus(d) === "online").length;
     const offline = devices.filter((d) => getDeviceStatus(d) === "offline").length;
     const active = devices.filter((d) => getDeviceStatus(d) === "online" && d?.isOn).length;
-    const recent = devices.slice(0, 4);
-    return { onlineDevices: online, offlineDevices: offline, activeDevices: active, recentDevices: recent };
-  }, [devices]);
+    const favorites = devices.filter(d => d.is_favorite === true).slice(0, 4);
+    const recents = [...devices]
+      .sort((a, b) => {
+        const dateA = a.last_active ? parseDate(a.last_active).getTime() : 0;
+        const dateB = b.last_active ? parseDate(b.last_active).getTime() : 0;
+        return dateB - dateA;
+      })
+      .slice(0, 4);
+
+    return { onlineDevices: online, offlineDevices: offline, activeDevices: active, favoriteDevices: favorites, recentDevices: recents };
+  }, [devices, tick]);
 
   const renderDashboardItem = useCallback(({ item }) => (
     <DashboardCard
@@ -415,7 +467,10 @@ export default function HomeScreen() {
   ), [navigation, Colors]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: Colors.background }]}>
+    <LinearGradient
+      colors={isDarkTheme ? [Colors.background, Colors.surface] : ["#FFFFFF", "#F1F5F9"]}
+      style={{ flex: 1 }}
+    >
       <HomeHeader
         username={username}
         isDarkTheme={isDarkTheme}
@@ -438,33 +493,42 @@ export default function HomeScreen() {
         }
       >
         <HomeSection title="Overview" titleColor={Colors.text}>
-          <View style={styles.statsContainer}>
-            <StatCard
-              colors={[Colors.primary, Colors.primaryDark]}
-              icon={<Activity size={24} color={Colors.white} />}
-              value={devices.length}
-              title="Total Devices"
-              isLarge
-            />
-            <StatCard
-              colors={[Colors.success, "#059669"]}
-              icon={<Wifi size={24} color={Colors.white} />}
-              value={onlineDevices}
-              title="Online"
-            />
-            <StatCard
-              colors={[Colors.secondary, "#DB2777"]}
-              icon={<Zap size={24} color={Colors.white} />}
-              value={activeDevices}
-              title="Active"
-            />
-            <StatCard
-              colors={[Colors.danger, "#C11B48"]}
-              icon={<WifiOff size={24} color={Colors.white} />}
-              value={offlineDevices}
-              title="Offline"
-            />
-          </View>
+          {loading ? (
+            <View style={styles.statsContainer}>
+              <StatCardSkeleton isLarge Colors={Colors} />
+              <StatCardSkeleton Colors={Colors} />
+              <StatCardSkeleton Colors={Colors} />
+              <StatCardSkeleton Colors={Colors} />
+            </View>
+          ) : (
+            <View style={styles.statsContainer}>
+              <StatCard
+                colors={[Colors.primary, Colors.primaryDark]}
+                icon={<Activity size={24} color={Colors.white} />}
+                value={devices.length}
+                title="Total Devices"
+                isLarge
+              />
+              <StatCard
+                colors={[Colors.success, "#059669"]}
+                icon={<Wifi size={24} color={Colors.white} />}
+                value={onlineDevices}
+                title="Online"
+              />
+              <StatCard
+                colors={[Colors.secondary, "#DB2777"]}
+                icon={<Zap size={24} color={Colors.white} />}
+                value={activeDevices}
+                title="Active"
+              />
+              <StatCard
+                colors={[Colors.danger, "#C11B48"]}
+                icon={<WifiOff size={24} color={Colors.white} />}
+                value={offlineDevices}
+                title="Offline"
+              />
+            </View>
+          )}
         </HomeSection>
 
         <HomeSection
@@ -478,36 +542,71 @@ export default function HomeScreen() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.dashboardsScroll}
-            data={dashboardsLoading ? [{key: 's1'}, {key: 's2'}] : dashboards}
-            renderItem={dashboardsLoading ? () => <DashboardCardSkeleton Colors={Colors} /> : renderDashboardItem}
+            data={loading ? [{key: 's1'}, {key: 's2'}] : dashboards}
+            renderItem={loading ? () => <DashboardCardSkeleton Colors={Colors} /> : renderDashboardItem}
             keyExtractor={(item, index) => item._id || `skeleton-${index}`}
             ListEmptyComponent={
-              !dashboardsLoading ? <Text style={{color: Colors.textMuted, paddingLeft: 16}}>No dashboards yet.</Text> : null
+              !loading ? (
+                <EmptyState
+                  icon={LayoutDashboard}
+                  title="No Dashboards Yet"
+                  message="Create a dashboard to organize and visualize your device data."
+                  buttonText="Add Dashboard"
+                  onButtonPress={() => navigation.navigate("Dashboards")}
+                  Colors={Colors}
+                />
+              ) : null
             }
           />
         </HomeSection>
 
-        <HomeSection
-          title="Quick Access"
-          linkText="See all"
-          onLinkPress={() => navigation.navigate("Devices")}
-          titleColor={Colors.text}
-          linkColor={Colors.primary}
-        >
-          <FlatList
-            scrollEnabled={false} // Disable scrolling as it's inside a ScrollView
-            contentContainerStyle={styles.devicesGrid}
-            data={devicesLoading && recentDevices.length === 0 ? [{key: 's1'}, {key: 's2'}] : recentDevices}
-            renderItem={devicesLoading && recentDevices.length === 0 ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
-            keyExtractor={(item, index) => String(item.id || item._id || `skeleton-${index}`)}
-            numColumns={2}
-            ListEmptyComponent={
-              !devicesLoading ? <Text style={{color: Colors.textMuted}}>No recent devices.</Text> : null
-            }
-          />
-        </HomeSection>
+        {favoriteDevices.length > 0 && (
+          <HomeSection
+            title="Favorites"
+            linkText="See all"
+            onLinkPress={() => navigation.navigate("Devices")}
+            titleColor={Colors.text}
+            linkColor={Colors.primary}
+          >
+            <FlatList
+              scrollEnabled={false}
+              contentContainerStyle={styles.devicesGrid}
+              data={loading ? Array(2).fill({}).map((_, i) => ({key: `fs-${i}`})) : favoriteDevices}
+              renderItem={loading ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
+              keyExtractor={(item, index) => String(item.id || item._id || `skeleton-fav-${index}`)}
+              numColumns={2}
+            />
+          </HomeSection>
+        )}
+
+        <HomeSection title="Recent Activity" titleColor={Colors.text}>
+            <FlatList
+              scrollEnabled={false}
+              contentContainerStyle={styles.devicesGrid}
+              data={loading && recentDevices.length === 0 ? Array(2).fill({}).map((_, i) => ({key: `rs-${i}`})) : recentDevices}
+              renderItem={loading && recentDevices.length === 0 ? () => <DeviceCardSkeleton Colors={Colors} /> : renderDeviceItem}
+              keyExtractor={(item, index) => String(item.id || item._id || `skeleton-rec-${index}`)}
+              numColumns={2}
+              ListEmptyComponent={
+                !loading && devices.length === 0 ? (
+                  <EmptyState
+                    icon={Cpu}
+                    title="No Devices Found"
+                    message="Get started by adding your first IoT device to the platform."
+                    buttonText="Add Device"
+                    onButtonPress={() => navigation.navigate("Devices")}
+                    Colors={Colors}
+                  />
+                ) : !loading && recentDevices.length === 0 ? (
+                  <View style={{ padding: 16 }}>
+                    <Text style={{ color: Colors.textMuted, textAlign: 'center' }}>No recent device activity.</Text>
+                  </View>
+                ) : null
+              }
+            />
+          </HomeSection>
       </ScrollView>
-    </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -517,6 +616,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 60,
+    paddingBottom: 0, // No bottom padding, handled by content
     paddingBottom: 20,
     paddingHorizontal: 20,
   },
@@ -561,6 +661,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    paddingTop: 28,
     paddingBottom: 100,
   },
   statsContainer: {
@@ -571,6 +672,49 @@ const styles = StyleSheet.create({
    section: {
     marginTop: 28,
     paddingHorizontal: CARD_PADDING,
+  },
+  statCard: {
+    borderRadius: 20,
+    padding: CARD_PADDING,
+    justifyContent: 'space-between',
+  },
+  statCardLarge: {
+    width: '100%',
+    minHeight: 120,
+  },
+  statCardSmall: {
+    width: (width - CARD_PADDING * 2 - CARD_GAP) / 2,
+    minHeight: 120,
+  },
+  statCardContent: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  emptyContainer: {
+    marginHorizontal: CARD_PADDING,
+    padding: 24,
+    borderRadius: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  emptyIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  emptyMessage: {
+    fontSize: moderateScale(14),
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
   },
   devicesGrid: {
     flexDirection: "row",
@@ -718,5 +862,15 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     color: "#FFFFFF",
     opacity: 0.9,
+  },
+  emptyButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

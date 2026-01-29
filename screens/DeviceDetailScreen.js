@@ -40,7 +40,6 @@ import {
   Code,
   X,
 } from "lucide-react-native";
-import { Ionicons } from "@expo/vector-icons";
 import api from "../services/api";
 import { moderateScale } from "../utils/scaling";
 import WidgetRenderer from "../components/widgets/WidgetRenderer";
@@ -149,6 +148,13 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  const [tick, setTick] = useState(0);
+
+  // Force refresh every 5 seconds to update relative times/statuses
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, []);
   
   // --- Code Examples Modal ---
   const [codeModalVisible, setCodeModalVisible] = useState(false);
@@ -192,33 +198,23 @@ export default function DeviceDetailScreen({ route, navigation }) {
   const getDeviceStatus = useCallback((device) => {
     if (!device) return "offline";
     
-    // If device has explicit status, use it (but verify it's still valid)
-    if (device.status === "online" && device.last_active) {
+    // Trust explicit offline status from server/context
+    if (device.status === 'offline') return 'offline';
+    
+    // Check last_active with 60s threshold
+    if (device.last_active) {
       const lastActive = parseDate(device.last_active);
       const now = new Date();
       const secondsSinceActive = (now - lastActive) / 1000;
       
-      // Device is considered offline if last_active is more than 60 seconds ago
-      // Increased from 20s to allow for network latency and heartbeat intervals
       if (secondsSinceActive > 60) {
         return "offline";
       }
       return "online";
     }
     
-    // If no explicit status or status is offline, check last_active
-    if (device.last_active) {
-      const lastActive = parseDate(device.last_active);
-      const now = new Date();
-      const secondsSinceActive = (now - lastActive) / 1000;
-      
-      if (secondsSinceActive <= 60) {
-        return "online";
-      }
-    }
-    
     return device.status || "offline";
-  }, []);
+  }, [tick]);
 
   const handleRefresh = useCallback(() => {
     if (!device?.device_token) return;
@@ -266,8 +262,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
         <View style={styles.errorContainer}>
           <AlertTriangle size={64} color={Colors.danger} />
           <Text style={[styles.errorTitle, { color: Colors.text }]}>Device not found</Text>
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.backButtonText}>Go Back</Text>
+          <TouchableOpacity style={[styles.backButton, { backgroundColor: Colors.primary }]} onPress={() => navigation.goBack()}>
+            <Text style={[styles.backButtonText, { color: Colors.background }]}>Go Back</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -528,8 +524,8 @@ export default function DeviceDetailScreen({ route, navigation }) {
             <View style={styles.emptyState}>
               <Activity size={48} color={Colors.textSecondary} />
               <Text style={[styles.emptyStateText, { color: Colors.textSecondary }]}>No sensors configured</Text>
-              <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
-                <Text style={styles.refreshButtonText}>Refresh Telemetry</Text>
+              <TouchableOpacity style={[styles.refreshButton, { backgroundColor: Colors.primary }]} onPress={handleRefresh}>
+                <Text style={[styles.refreshButtonText, { color: Colors.background }]}>Refresh Telemetry</Text>
               </TouchableOpacity>
             </View>
           )}

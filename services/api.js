@@ -372,9 +372,7 @@ class API {
     const token = await AsyncStorage.getItem("userToken");
 
     if (!token) {
-      onError(new Error("No user token found for SSE stream."));
-      return controller;
-      const error = new Error(`No user token found for SSE stream at ${endpoint}.`);
+      const error = new Error("No user token found for SSE stream.");
       if (onError) onError(error);
       return controller; // Return controller to prevent crashes
     }
@@ -505,9 +503,6 @@ class API {
     return this.request(`/telemetry/latest?device_token=${deviceToken}`, { method: "GET" });
   }
 
-  // This function would fetch historical data for a chart.
-  // The backend would need a new endpoint like:
-  // GET /api/telemetry/history?device_id=<...>&key=<...>&period=24h
   async getTelemetryHistory(deviceId, key, period = "24h") {
     debugLog(`Fetching history for ${deviceId}, key: ${key}, period: ${period}`);
     return this.request(`/telemetry/history?device_id=${deviceId}&key=${key}&period=${period}`);

@@ -259,6 +259,14 @@ export const AuthProvider = ({ children }) => {
   // ====================================
   const setThemePreference = async (pref) => {
     setThemePreferenceState(pref);
+
+    // Update isDarkTheme immediately to prevent flash/delay
+    if (pref === 'system') {
+      setIsDarkTheme(systemScheme === 'dark');
+    } else {
+      setIsDarkTheme(pref === 'dark');
+    }
+
     try {
       await AsyncStorage.setItem("themePreference", pref);
     } catch (err) {
@@ -416,6 +424,36 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       console.error("Update device error:", err);
       const errorMessage = err.response?.data?.detail || err.message || "Failed to update device";
+      throw new Error(errorMessage);
+    }
+  };
+
+  const bulkUpdateDeviceStatus = async (deviceIds, status) => {
+    try {
+      await API.bulkUpdateDeviceStatus(deviceIds, status);
+      
+      // Update local state immediately
+      setDevices((prev) => 
+        prev.map((d) => {
+          // Check if this device is in the list of IDs to update
+          // Handle both id and _id formats
+          const dId = String(d.id || d._id);
+          const isTarget = deviceIds.some(targetId => String(targetId) === dId);
+          
+          if (isTarget) {
+            return {
+              ...d,
+              status: status,
+              last_active: new Date().toISOString(),
+            };
+          }
+          return d;
+        })
+      );
+      return true;
+    } catch (err) {
+      console.error("Bulk update error:", err);
+      const errorMessage = err.response?.data?.detail || err.message || "Failed to update devices";
       throw new Error(errorMessage);
     }
   };
@@ -683,8 +721,8 @@ export const AuthProvider = ({ children }) => {
       });
     } 
     // Handle ping/pong (ignore)
-    else if (m.type === "pong" || m.type === "ping") {
-      // Silently ignore ping/pong messages
+    else if (m.type === "pong" || m.type === "ping" || m.type === "connected") {
+      // Silently ignore ping/pong/connected messages
     } 
     // Log other message types for debugging
     // Handle new notifications
@@ -846,6 +884,7 @@ const connectWebSocket = (token) => {
           devices,
           addDevice,
           updateDevice,
+          bulkUpdateDeviceStatus,
           deleteDevice,
           deleteAccount,
           fetchDevices,

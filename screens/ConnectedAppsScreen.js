@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useContext, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,20 +7,32 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
-import { ChevronLeft, Command, Slack, Chrome, Radio } from 'lucide-react-native';
+import { ChevronLeft, Command, Slack, Chrome, Radio, X, Save, RefreshCw } from 'lucide-react-native';
 import { showToast } from '../components/Toast';
 import CustomAlert from '../components/CustomAlert';
 
 export default function ConnectedAppsScreen({ navigation }) {
-  const { isDarkTheme } = useContext(AuthContext);
+  const { isDarkTheme, user, updateUser } = useContext(AuthContext);
   const insets = useSafeAreaInsets();
   const [loadingId, setLoadingId] = useState(null);
   const [alertVisible, setAlertVisible] = useState(false);
   const [alertConfig, setAlertConfig] = useState({});
+  const [configModalVisible, setConfigModalVisible] = useState(false);
+  const [selectedApp, setSelectedApp] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [configSettings, setConfigSettings] = useState({
+    sync: true,
+    notifications: true,
+    apiKey: ''
+  });
 
   const Colors = useMemo(() => ({
     background: isDarkTheme ? "#0A0E27" : "#F1F5F9",
@@ -34,12 +46,11 @@ export default function ConnectedAppsScreen({ navigation }) {
     danger: isDarkTheme ? "#FF3366" : "#DC2626",
   }), [isDarkTheme]);
 
-  const [apps, setApps] = useState([
+  const appsMetadata = useMemo(() => [
     {
       id: 'google',
       name: 'Google Home',
       description: 'Control devices with Google Assistant.',
-      connected: true,
       icon: Chrome,
       color: '#DB4437'
     },
@@ -47,7 +58,6 @@ export default function ConnectedAppsScreen({ navigation }) {
       id: 'alexa',
       name: 'Amazon Alexa',
       description: 'Voice control via Alexa ecosystem.',
-      connected: false,
       icon: Radio,
       color: '#00CAFF'
     },
@@ -55,7 +65,6 @@ export default function ConnectedAppsScreen({ navigation }) {
       id: 'slack',
       name: 'Slack',
       description: 'Get notifications in your workspace.',
-      connected: false,
       icon: Slack,
       color: '#4A154B'
     },
@@ -63,11 +72,17 @@ export default function ConnectedAppsScreen({ navigation }) {
       id: 'ifttt',
       name: 'IFTTT',
       description: 'Trigger complex automation recipes.',
-      connected: true,
       icon: Command,
       color: '#000000'
     }
-  ]);
+  ], []);
+
+  const apps = useMemo(() => {
+    return appsMetadata.map(app => ({
+      ...app,
+      connected: !!user?.integrations?.[app.id]?.connected
+    }));
+  }, [appsMetadata, user?.integrations]);
 
   const handleToggle = (app) => {
     if (app.connected) {
@@ -82,28 +97,77 @@ export default function ConnectedAppsScreen({ navigation }) {
             style: 'destructive', 
             onPress: () => {
               setAlertVisible(false);
-              toggleConnection(app.id, false);
-              showToast.success('Disconnected', `${app.name} has been disconnected.`);
+              toggleConnection(app, false);
             } 
           }
         ]
       });
       setAlertVisible(true);
     } else {
-      setLoadingId(app.id);
-      // Simulate API call
-      setTimeout(() => {
-        setLoadingId(null);
-        toggleConnection(app.id, true);
-        showToast.success('Connected', `Successfully linked ${app.name}.`);
-      }, 1500);
+      toggleConnection(app, true);
     }
   };
 
-  const toggleConnection = (id, status) => {
-    setApps(prev => prev.map(app => 
-      app.id === id ? { ...app, connected: status } : app
-    ));
+  const toggleConnection = async (app, status) => {
+    setLoadingId(app.id);
+    try {
+      const currentIntegrations = user?.integrations || {};
+      const existingConfig = currentIntegrations[app.id] || {};
+      
+      await updateUser({
+        integrations: {
+          ...currentIntegrations,
+          [app.id]: {
+            ...existingConfig,
+            connected: status
+          }
+        }
+      });
+      
+      showToast.success(
+        status ? 'Connected' : 'Disconnected', 
+        status ? `Successfully linked ${app.name}.` : `${app.name} has been disconnected.`
+      );
+    } catch (err) {
+      showToast.error("Action Failed", err.message || "Could not update connection status.");
+    } finally {
+      setLoadingId(null);
+    }
+  };
+
+  const handleConfigure = (app) => {
+    setSelectedApp(app);
+    const savedConfig = user?.integrations?.[app.id] || {};
+    setConfigSettings({
+      sync: savedConfig.sync ?? true,
+      notifications: savedConfig.notifications ?? true,
+      apiKey: savedConfig.apiKey || `${app.id.toUpperCase()}_${Math.random().toString(36).substr(2, 8).toUpperCase()}`
+    });
+    setConfigModalVisible(true);
+  };
+
+  const handleSaveConfig = async () => {
+    if (!selectedApp) return;
+    setIsSaving(true);
+    try {
+      const currentIntegrations = user?.integrations || {};
+      await updateUser({
+        integrations: {
+          ...currentIntegrations,
+          [selectedApp.id]: {
+            ...configSettings,
+            connected: true
+          }
+        }
+      });
+      showToast.success("Settings Saved", `Configuration for ${selectedApp?.name} updated.`);
+      setConfigModalVisible(false);
+      setSelectedApp(null);
+    } catch (err) {
+      showToast.error("Save Failed", err.message || "Could not save settings.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -164,7 +228,7 @@ export default function ConnectedAppsScreen({ navigation }) {
                     <View style={[styles.statusDot, { backgroundColor: Colors.success }]} />
                     <Text style={[styles.statusText, { color: Colors.success }]}>Active</Text>
                   </View>
-                  <TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleConfigure(app)}>
                     <Text style={[styles.settingsLink, { color: Colors.primary }]}>Configure</Text>
                   </TouchableOpacity>
                 </View>
@@ -203,4 +267,22 @@ const styles = StyleSheet.create({
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '600' },
   settingsLink: { fontSize: 12, fontWeight: '600' },
+  modalContainer: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalContent: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '700' },
+  modalBody: { marginBottom: 24 },
+  configSection: { padding: 16, borderRadius: 12, marginBottom: 20 },
+  configLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
+  apiKeyContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderRadius: 8, borderWidth: 1, marginBottom: 8 },
+  apiKeyText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 14 },
+  helperText: { fontSize: 12 },
+  settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.1)' },
+  settingLabel: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  settingDesc: { fontSize: 13 },
+  modalFooter: { flexDirection: 'row', gap: 12 },
+  cancelButton: { flex: 1, padding: 16, borderRadius: 12, borderWidth: 1, alignItems: 'center' },
+  cancelButtonText: { fontWeight: '600', fontSize: 16 },
+  saveButton: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  saveButtonText: { color: '#FFF', fontWeight: '600', fontSize: 16 },
 });

@@ -1,227 +1,139 @@
-// ProfileInfoRow.js - Optimized for Modern Profile Design
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  TextInput, 
-  Platform
-} from 'react-native';
-import { ChevronRight, Eye, EyeOff } from 'lucide-react-native';
-
-const alpha = (hex, opacity) => {
-  if (!hex) return '#00000000';
-  const o = Math.round(opacity * 255).toString(16).padStart(2, "0");
-  return hex + o;
-};
+import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 const ProfileInfoRow = ({
   icon,
   label,
   value,
   Colors,
-  isEditing = false,
+  isEditing,
   onChangeText,
   placeholder,
-  onPress,
-  keyboardType = "default",
-  autoCapitalize = "none",
+  keyboardType = 'default',
+  secureTextEntry = false,
   multiline = false,
   numberOfLines = 1,
-  secureTextEntry = false,
   maxLength,
-  editable = true,
-  caption = null,
-  layout = 'horizontal', 
-  iconSize = 20,
+  editable = true
 }) => {
-  const [showPassword, setShowPassword] = useState(false);
-  const isPasswordField = secureTextEntry && isEditing;
-  const isVertical = layout === 'vertical';
+  const [isPasswordVisible, setIsPasswordVisible] = useState(!secureTextEntry);
 
-  const IconContainer = () => (
+  const togglePasswordVisibility = () => {
+    setIsPasswordVisible(!isPasswordVisible);
+  };
+
+  const shouldSecureText = secureTextEntry && !isPasswordVisible;
+
+  return (
     <View style={[
-      styles.infoIcon, 
-      { 
-        backgroundColor: alpha(Colors.primary, 0.1),
-        marginBottom: isVertical ? 12 : 0,
-      }
+      styles.container, 
+      { borderBottomColor: Colors.border },
+      { alignItems: multiline ? 'flex-start' : 'center' }
     ]}>
-      {React.cloneElement(icon, { size: iconSize, color: Colors.primary })}
-    </View>
-  );
-
-  // --- READ-ONLY MODE ---
-  if (!isEditing) {
-    return (
-      <TouchableOpacity
-        style={[
-          styles.infoRow, 
-          { 
-            borderBottomColor: alpha(Colors.textSecondary, 0.1),
-            flexDirection: isVertical ? 'column' : 'row',
-            alignItems: isVertical ? 'flex-start' : 'center',
-          }
-        ]}
-        onPress={onPress}
-        activeOpacity={onPress ? 0.7 : 1}
-        disabled={!onPress}
-      >
-        <IconContainer />
-
-        <View style={styles.contentContainer}>
-          <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
-            {label}
-          </Text>
+      <View style={[styles.iconContainer, multiline && styles.iconContainerMultiline]}>
+        {icon}
+      </View>
+      
+      <View style={styles.contentContainer}>
+        <Text style={[styles.label, { color: Colors.textSecondary }]}>{label}</Text>
+        
+        {isEditing && editable ? (
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={[
+                styles.input,
+                { color: Colors.text },
+                multiline && styles.multilineInput
+              ]}
+              value={value}
+              onChangeText={onChangeText}
+              placeholder={placeholder}
+              placeholderTextColor={Colors.textSecondary + '80'}
+              keyboardType={keyboardType}
+              secureTextEntry={shouldSecureText}
+              multiline={multiline}
+              numberOfLines={numberOfLines}
+              maxLength={maxLength}
+              textAlignVertical={multiline ? 'top' : 'center'}
+              editable={editable}
+            />
+            
+            {secureTextEntry && (
+              <TouchableOpacity
+                onPress={togglePasswordVisibility}
+                style={styles.eyeButton}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                {isPasswordVisible ? (
+                  <EyeOff size={20} color={Colors.textSecondary} />
+                ) : (
+                  <Eye size={20} color={Colors.textSecondary} />
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
           <Text 
-            style={[
-              styles.infoValue, 
-              { color: Colors.text }, 
-              isVertical && styles.verticalValue
-            ]} 
-            numberOfLines={isVertical ? 0 : 1}
-            ellipsizeMode='tail' 
+            style={[styles.value, { color: Colors.text }]}
+            numberOfLines={multiline ? numberOfLines : 1}
           >
             {value || placeholder || 'Not set'}
           </Text>
-          {caption && (
-            <Text style={[styles.infoCaption, { color: Colors.textSecondary }]}>
-              {caption}
-            </Text>
-          )}
-        </View>
-        
-        {onPress && !isVertical && (
-          <ChevronRight size={18} color={Colors.textSecondary} />
         )}
-      </TouchableOpacity>
-    );
-  }
-
-  // --- EDITING MODE ---
-  return (
-    <View style={[
-      styles.infoRow, 
-      { 
-        borderBottomColor: alpha(Colors.textSecondary, 0.1),
-        flexDirection: isVertical ? 'column' : 'row',
-        alignItems: isVertical ? 'flex-start' : 'center',
-      }
-    ]}>
-      <IconContainer />
-
-      <View style={styles.contentContainer}>
-        <Text style={[styles.infoLabel, { color: Colors.textSecondary }]}>
-          {label}
-        </Text>
-        <View style={[
-          styles.inputWrapper,
-          {
-            backgroundColor: Colors.surfaceLight,
-            borderColor: isEditing ? Colors.primary : 'transparent',
-          }
-        ]}>
-          <TextInput
-            style={[
-              styles.inputField,
-              multiline && styles.inputFieldMultiline,
-              { color: Colors.text }
-            ]}
-            value={value}
-            onChangeText={onChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={alpha(Colors.textSecondary, 0.5)}
-            autoCapitalize={autoCapitalize}
-            autoCorrect={false}
-            keyboardType={keyboardType}
-            multiline={multiline}
-            numberOfLines={numberOfLines}
-            textAlignVertical={multiline ? "top" : "center"}
-            selectionColor={Colors.primary}
-            secureTextEntry={isPasswordField && !showPassword}
-            maxLength={maxLength}
-            editable={editable}
-          />
-          {isPasswordField && (
-            <TouchableOpacity
-              style={styles.passwordToggle}
-              onPress={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? (
-                <EyeOff size={18} color={Colors.textSecondary} />
-              ) : (
-                <Eye size={18} color={Colors.textSecondary} />
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
       </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  infoRow: {
+  container: {
+    flexDirection: 'row',
+    paddingVertical: 16,
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  infoIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
+  iconContainer: {
     marginRight: 16,
+    width: 24,
+    alignItems: 'center',
+  },
+  iconContainerMultiline: {
+    marginTop: 2,
   },
   contentContainer: {
     flex: 1,
-    width: '100%',
   },
-  infoLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  infoValue: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  verticalValue: {
-    fontSize: 17,
-    marginTop: 2,
-    marginBottom: 4,
-  },
-  infoCaption: {
+  label: {
     fontSize: 12,
-    fontWeight: '400',
-    marginTop: 2,
-    lineHeight: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  value: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    paddingHorizontal: 12,
-    marginTop: 6,
   },
-  inputField: {
+  input: {
     flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    paddingVertical: Platform.OS === 'ios' ? 12 : 8,
-    minHeight: 44,
+    fontSize: 16,
+    fontWeight: '500',
+    padding: 0,
+    minHeight: 24,
   },
-  inputFieldMultiline: {
-    minHeight: 80,
-    paddingTop: 12,
+  multilineInput: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+    paddingTop: 0,
   },
-  passwordToggle: {
-    paddingLeft: 10,
+  eyeButton: {
+    padding: 4,
+    marginLeft: 8,
   },
 });
 
